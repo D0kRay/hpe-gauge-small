@@ -61,7 +61,14 @@ Artifacts produced by CI:
 - `esp-idf-build` firmware artifacts (bin/elf/map/flasher args)
 - `wiki-site` MkDocs wiki website build output
 
-Download artifacts from the latest workflow run on the Actions page above.
+## Wiki (online)
+
+The MkDocs wiki is published to GitHub Pages on pushes to `main`:
+
+- https://d0kray.github.io/hpe-gauge-small/
+- Components page: https://d0kray.github.io/hpe-gauge-small/components/
+
+You can still download the `wiki-site` artifact from workflow runs when needed.
 
 ## Mobile web UI
 
