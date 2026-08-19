@@ -4,6 +4,12 @@ idf_component_register(
         "bsp.c"
         "display.c"
         "ui.c"
+        "ui_widget_dual_gauge.c"
+        "ui_widget_info_panel.c"
+        "ui_screen_gauge.c"
+        "ui_screen_can.c"
+        "ui_screen_sensors.c"
+        "ui_screen_ota.c"
         "can_cfg.c"
         "can_console.c"
         "can_service.c"
@@ -25,4 +31,5 @@ idf_component_register(
         esp_lcd_touch_cst816s
         nvs_flash
         console
+        app_update
 )
