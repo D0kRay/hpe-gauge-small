@@ -1,7 +1,5 @@
 #include "ui_widget_info_panel.h"
 
-#include <string.h>
-
 typedef struct {
     lv_obj_t obj;
     lv_obj_t *title;

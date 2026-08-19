@@ -1,7 +1,6 @@
 #include "ui_widget_dual_gauge.h"
 
 #include <stdio.h>
-#include "esp_check.h"
 
 typedef struct {
     lv_obj_t obj;

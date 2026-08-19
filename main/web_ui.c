@@ -110,6 +110,25 @@ static void ota_state_snapshot(bool *in_progress, bool *success, int *progress, 
     }
 }
 
+static bool ota_state_try_start(void)
+{
+    bool can_start = false;
+    portENTER_CRITICAL(&s_ota_lock);
+    if (!s_ota_in_progress) {
+        s_ota_in_progress = true;
+        s_ota_success = false;
+        s_ota_progress = 0;
+        snprintf(s_ota_state, sizeof(s_ota_state), "%s", "receiving");
+        can_start = true;
+    }
+    portEXIT_CRITICAL(&s_ota_lock);
+
+    if (can_start) {
+        ui_set_ota_status("receiving", 0, false);
+    }
+    return can_start;
+}
+
 static bool ws_clients_add(int fd)
 {
     for (size_t i = 0; i < CONFIG_HPE_WIFI_MAX_CONN; ++i) {
@@ -149,27 +168,29 @@ static void ota_reboot_task(void *arg)
 
 static esp_err_t ota_post_handler(httpd_req_t *req)
 {
-    bool in_progress = false;
-    ota_state_snapshot(&in_progress, NULL, NULL, NULL, 0);
-    if (in_progress) {
+    if (!ota_state_try_start()) {
         httpd_resp_set_status(req, "409 Conflict");
         return httpd_resp_sendstr(req, "{\"error\":\"ota already in progress\"}");
     }
 
     if (req->content_len <= 0) {
+        ota_state_set("idle", 0, false, false);
         httpd_resp_set_status(req, "400 Bad Request");
         return httpd_resp_sendstr(req, "{\"error\":\"empty payload\"}");
     }
 
     const esp_partition_t *update_partition = esp_ota_get_next_update_partition(NULL);
-    ESP_RETURN_ON_FALSE(update_partition != NULL, ESP_FAIL, TAG, "no ota partition");
+    if (!update_partition) {
+        ota_state_set("no ota partition", 0, false, false);
+        httpd_resp_set_status(req, "500 Internal Server Error");
+        return httpd_resp_sendstr(req, "{\"error\":\"no ota partition\"}");
+    }
 
     if ((size_t)req->content_len > update_partition->size) {
+        ota_state_set("image too large", 0, false, false);
         httpd_resp_set_status(req, "413 Payload Too Large");
         return httpd_resp_sendstr(req, "{\"error\":\"firmware too large for ota slot\"}");
     }
-
-    ota_state_set("receiving", 0, false, true);
 
     esp_ota_handle_t ota_handle = 0;
     esp_err_t ret = esp_ota_begin(update_partition, req->content_len, &ota_handle);
@@ -280,6 +301,9 @@ static void ws_broadcast_task(void *arg)
                            ota_progress,
                            ota_state);
         if (len > 0) {
+            if (len >= (int)sizeof(payload)) {
+                len = sizeof(payload) - 1;
+            }
             httpd_ws_frame_t frame = {
                 .type = HTTPD_WS_TYPE_TEXT,
                 .payload = (uint8_t *)payload,
