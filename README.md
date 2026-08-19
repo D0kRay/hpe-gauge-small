@@ -1,5 +1,9 @@
 # hpe-gauge-small
 
+[![Issues](https://img.shields.io/github/issues/D0kRay/hpe-gauge-small)](https://github.com/D0kRay/hpe-gauge-small/issues)
+[![Latest Release](https://img.shields.io/github/v/release/D0kRay/hpe-gauge-small)](https://github.com/D0kRay/hpe-gauge-small/releases/latest)
+[![Build Status](https://github.com/D0kRay/hpe-gauge-small/actions/workflows/build-idf.yml/badge.svg)](https://github.com/D0kRay/hpe-gauge-small/actions/workflows/build-idf.yml)
+
 ESP32-S3 ESP-IDF project for a 240x240 round gauge with:
 
 - GC9A01 SPI display
