@@ -5,6 +5,9 @@
 #include "driver/i2c.h"
 #include "driver/spi_master.h"
 
+/**
+ * @brief Board support package pin and peripheral configuration.
+ */
 typedef struct {
     spi_host_device_t lcd_spi_host;
     gpio_num_t pin_lcd_mosi;
@@ -25,4 +28,9 @@ typedef struct {
     int twai_bitrate;
 } bsp_config_t;
 
+/**
+ * @brief Get the immutable BSP configuration derived from Kconfig defaults.
+ *
+ * @return Pointer to the global configuration instance.
+ */
 const bsp_config_t *bsp_config_get(void);

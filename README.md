@@ -27,6 +27,11 @@ Configured in `/home/runner/work/hpe-gauge-small/hpe-gauge-small/main/idf_compon
 - `espressif/esp_lcd_touch`
 - `espressif/esp_lcd_touch_cst816s`
 
+## Internal component documentation
+
+- `/home/runner/work/hpe-gauge-small/hpe-gauge-small/main/README.md`
+- `/home/runner/work/hpe-gauge-small/hpe-gauge-small/main/include/README.md`
+
 ## BSP pin configuration
 
 Pins and app settings are exposed in Kconfig menu:
