@@ -1,0 +1,127 @@
+menu "HPE Gauge BSP"
+
+config HPE_LCD_HOST
+    int "SPI host number for GC9A01"
+    default 2
+    range 1 3
+
+config HPE_PIN_LCD_MOSI
+    int "LCD MOSI GPIO"
+    default 11
+
+config HPE_PIN_LCD_SCLK
+    int "LCD SCLK GPIO"
+    default 12
+
+config HPE_PIN_LCD_CS
+    int "LCD CS GPIO"
+    default 10
+
+config HPE_PIN_LCD_DC
+    int "LCD D/C GPIO"
+    default 9
+
+config HPE_PIN_LCD_RST
+    int "LCD reset GPIO"
+    default 14
+
+config HPE_PIN_LCD_BL
+    int "LCD backlight GPIO"
+    default 13
+
+config HPE_PIN_TOUCH_SDA
+    int "Touch/IMU/RTC I2C SDA GPIO"
+    default 6
+
+config HPE_PIN_TOUCH_SCL
+    int "Touch/IMU/RTC I2C SCL GPIO"
+    default 7
+
+config HPE_PIN_TOUCH_INT
+    int "Touch INT GPIO"
+    default 5
+
+config HPE_PIN_TOUCH_RST
+    int "Touch reset GPIO"
+    default 4
+
+config HPE_PIN_TWAI_TX
+    int "TWAI TX GPIO"
+    default 17
+
+config HPE_PIN_TWAI_RX
+    int "TWAI RX GPIO"
+    default 18
+
+config HPE_TWAI_BITRATE
+    int "TWAI bitrate"
+    default 500000
+
+config HPE_CAN_CFG_PATH
+    string "CAN mapping config file path"
+    default "/littlefs/can_messages.cfg"
+
+menu "UI"
+
+config HPE_UI_SPEED_MAX
+    int "Speed gauge max"
+    default 240
+
+config HPE_UI_RPM_MAX
+    int "RPM gauge max"
+    default 9000
+
+config HPE_LVGL_TICK_MS
+    int "LVGL tick period (ms)"
+    default 2
+
+endmenu
+
+menu "Web UI"
+
+config HPE_WIFI_AP_SSID
+    string "WiFi AP SSID"
+    default "hpe-gauge"
+
+config HPE_WIFI_AP_PASS
+    string "WiFi AP password (min 8 chars for WPA2, shorter => open AP)"
+    default "hpe-gauge"
+
+config HPE_WIFI_AP_CHANNEL
+    int "WiFi AP channel"
+    default 1
+    range 1 13
+
+config HPE_WIFI_MAX_CONN
+    int "Max WiFi/WebSocket clients"
+    default 4
+    range 1 8
+
+config HPE_WEB_WS_PERIOD_MS
+    int "WebSocket telemetry period (ms)"
+    default 500
+    range 100 5000
+
+endmenu
+
+menu "LVGL"
+
+config LV_USE_ARC
+    bool "Enable LVGL arc widget"
+    default y
+
+config LV_USE_MENU
+    bool "Enable LVGL menu widget"
+    default y
+
+config LV_USE_TABVIEW
+    bool "Enable LVGL tabview widget"
+    default y
+
+config LV_USE_LABEL
+    bool "Enable LVGL label widget"
+    default y
+
+endmenu
+
+endmenu
