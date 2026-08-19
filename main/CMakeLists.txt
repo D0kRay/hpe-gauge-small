@@ -10,9 +10,7 @@ idf_component_register(
         "sensor_rtc.c"
     INCLUDE_DIRS "include"
     REQUIRES
-        esp_driver_spi
-        esp_driver_gpio
-        esp_driver_i2c
+        driver
         esp_lcd
         esp_timer
         lvgl
@@ -20,9 +18,6 @@ idf_component_register(
         esp_lcd_gc9a01
         esp_lcd_touch
         esp_lcd_touch_cst816s
-        esp_event
-        esp_netif
         nvs_flash
         console
-        twai
 )

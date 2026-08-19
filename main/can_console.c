@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
+#include <stdint.h>
 #include "can_cfg.h"
 #include "esp_console.h"
 #include "esp_log.h"

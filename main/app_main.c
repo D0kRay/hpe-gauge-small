@@ -5,6 +5,7 @@
 #include "esp_check.h"
 #include "esp_console.h"
 #include "esp_err.h"
+#include "esp_idf_version.h"
 #include "esp_log.h"
 #include "linenoise/linenoise.h"
 #include "nvs_flash.h"
@@ -28,9 +29,6 @@ void app_main(void)
     esp_console_config_t console_cfg = {
         .max_cmdline_length = 256,
         .max_cmdline_args = 16,
-#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 3, 0)
-        .hint_color = atoi(LOG_COLOR_CYAN),
-#endif
     };
     ESP_ERROR_CHECK(esp_console_init(&console_cfg));
     linenoiseSetMultiLine(true);
