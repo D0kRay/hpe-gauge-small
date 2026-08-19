@@ -2,70 +2,57 @@
 
 #include <stdio.h>
 
-typedef struct {
-    lv_obj_t obj;
-    lv_obj_t *speed_arc;
-    lv_obj_t *rpm_arc;
-    lv_obj_t *speed_label;
-    lv_obj_t *rpm_label;
-    int speed_max;
-    int rpm_max;
-} ui_widget_dual_gauge_t;
-
-static void dual_gauge_constructor(const lv_obj_class_t *class_p, lv_obj_t *obj)
+static lv_obj_t *dual_gauge_speed_arc_obj(lv_obj_t *widget)
 {
-    LV_UNUSED(class_p);
-    ui_widget_dual_gauge_t *w = (ui_widget_dual_gauge_t *)obj;
-
-    lv_obj_set_size(obj, 220, 220);
-
-    w->speed_arc = lv_arc_create(obj);
-    lv_obj_set_size(w->speed_arc, 220, 220);
-    lv_obj_center(w->speed_arc);
-    lv_arc_set_rotation(w->speed_arc, 135);
-    lv_arc_set_bg_angles(w->speed_arc, 0, 270);
-    lv_arc_set_range(w->speed_arc, 0, 240);
-    lv_obj_remove_style(w->speed_arc, NULL, LV_PART_KNOB);
-    lv_obj_clear_flag(w->speed_arc, LV_OBJ_FLAG_CLICKABLE);
-
-    w->rpm_arc = lv_arc_create(obj);
-    lv_obj_set_size(w->rpm_arc, 170, 170);
-    lv_obj_center(w->rpm_arc);
-    lv_arc_set_rotation(w->rpm_arc, 135);
-    lv_arc_set_bg_angles(w->rpm_arc, 0, 270);
-    lv_arc_set_range(w->rpm_arc, 0, 9000);
-    lv_obj_remove_style(w->rpm_arc, NULL, LV_PART_KNOB);
-    lv_obj_clear_flag(w->rpm_arc, LV_OBJ_FLAG_CLICKABLE);
-
-    w->speed_label = lv_label_create(obj);
-    lv_label_set_text(w->speed_label, "0 km/h");
-    lv_obj_align(w->speed_label, LV_ALIGN_CENTER, 0, -20);
-
-    w->rpm_label = lv_label_create(obj);
-    lv_label_set_text(w->rpm_label, "0 rpm");
-    lv_obj_align(w->rpm_label, LV_ALIGN_CENTER, 0, 20);
-
-    w->speed_max = 240;
-    w->rpm_max = 9000;
+    return widget ? lv_obj_get_child(widget, 0) : NULL;
 }
 
-static const lv_obj_class_t s_dual_gauge_class = {
-    .constructor_cb = dual_gauge_constructor,
-    .instance_size = sizeof(ui_widget_dual_gauge_t),
-    .base_class = &lv_obj_class,
-    .name = "ui_dual_gauge",
-};
+static lv_obj_t *dual_gauge_rpm_arc_obj(lv_obj_t *widget)
+{
+    return widget ? lv_obj_get_child(widget, 1) : NULL;
+}
+
+static lv_obj_t *dual_gauge_speed_label_obj(lv_obj_t *widget)
+{
+    return widget ? lv_obj_get_child(widget, 2) : NULL;
+}
+
+static lv_obj_t *dual_gauge_rpm_label_obj(lv_obj_t *widget)
+{
+    return widget ? lv_obj_get_child(widget, 3) : NULL;
+}
 
 lv_obj_t *ui_widget_dual_gauge_create(lv_obj_t *parent, int speed_max, int rpm_max)
 {
-    lv_obj_t *obj = lv_obj_class_create_obj(&s_dual_gauge_class, parent);
-    lv_obj_class_init_obj(obj);
+    lv_obj_t *obj = lv_obj_create(parent);
+    lv_obj_set_size(obj, 220, 220);
 
-    ui_widget_dual_gauge_t *w = (ui_widget_dual_gauge_t *)obj;
-    w->speed_max = (speed_max > 0) ? speed_max : 1;
-    w->rpm_max = (rpm_max > 0) ? rpm_max : 1;
-    lv_arc_set_range(w->speed_arc, 0, w->speed_max);
-    lv_arc_set_range(w->rpm_arc, 0, w->rpm_max);
+    lv_obj_t *speed_arc = lv_arc_create(obj);
+    lv_obj_set_size(speed_arc, 220, 220);
+    lv_obj_center(speed_arc);
+    lv_arc_set_rotation(speed_arc, 135);
+    lv_arc_set_bg_angles(speed_arc, 0, 270);
+    lv_arc_set_range(speed_arc, 0, (speed_max > 0) ? speed_max : 1);
+    lv_obj_remove_style(speed_arc, NULL, LV_PART_KNOB);
+    lv_obj_clear_flag(speed_arc, LV_OBJ_FLAG_CLICKABLE);
+
+    lv_obj_t *rpm_arc = lv_arc_create(obj);
+    lv_obj_set_size(rpm_arc, 170, 170);
+    lv_obj_center(rpm_arc);
+    lv_arc_set_rotation(rpm_arc, 135);
+    lv_arc_set_bg_angles(rpm_arc, 0, 270);
+    lv_arc_set_range(rpm_arc, 0, (rpm_max > 0) ? rpm_max : 1);
+    lv_obj_remove_style(rpm_arc, NULL, LV_PART_KNOB);
+    lv_obj_clear_flag(rpm_arc, LV_OBJ_FLAG_CLICKABLE);
+
+    lv_obj_t *speed_label = lv_label_create(obj);
+    lv_label_set_text(speed_label, "0 km/h");
+    lv_obj_align(speed_label, LV_ALIGN_CENTER, 0, -20);
+
+    lv_obj_t *rpm_label = lv_label_create(obj);
+    lv_label_set_text(rpm_label, "0 rpm");
+    lv_obj_align(rpm_label, LV_ALIGN_CENTER, 0, 20);
+
     return obj;
 }
 
@@ -75,18 +62,27 @@ void ui_widget_dual_gauge_set_values(lv_obj_t *widget, int speed, int rpm)
         return;
     }
 
-    ui_widget_dual_gauge_t *w = (ui_widget_dual_gauge_t *)widget;
+    lv_obj_t *speed_arc = dual_gauge_speed_arc_obj(widget);
+    lv_obj_t *rpm_arc = dual_gauge_rpm_arc_obj(widget);
+    lv_obj_t *speed_label = dual_gauge_speed_label_obj(widget);
+    lv_obj_t *rpm_label = dual_gauge_rpm_label_obj(widget);
+    if (!speed_arc || !rpm_arc || !speed_label || !rpm_label) {
+        return;
+    }
+
+    int speed_max = lv_arc_get_max_value(speed_arc);
+    int rpm_max = lv_arc_get_max_value(rpm_arc);
     if (speed < 0) {
         speed = 0;
     }
     if (rpm < 0) {
         rpm = 0;
     }
-    if (speed > w->speed_max) {
-        speed = w->speed_max;
+    if (speed > speed_max) {
+        speed = speed_max;
     }
-    if (rpm > w->rpm_max) {
-        rpm = w->rpm_max;
+    if (rpm > rpm_max) {
+        rpm = rpm_max;
     }
 
     char speed_text[24];
@@ -94,8 +90,8 @@ void ui_widget_dual_gauge_set_values(lv_obj_t *widget, int speed, int rpm)
     snprintf(speed_text, sizeof(speed_text), "%d km/h", speed);
     snprintf(rpm_text, sizeof(rpm_text), "%d rpm", rpm);
 
-    lv_arc_set_value(w->speed_arc, speed);
-    lv_arc_set_value(w->rpm_arc, rpm);
-    lv_label_set_text(w->speed_label, speed_text);
-    lv_label_set_text(w->rpm_label, rpm_text);
+    lv_arc_set_value(speed_arc, speed);
+    lv_arc_set_value(rpm_arc, rpm);
+    lv_label_set_text(speed_label, speed_text);
+    lv_label_set_text(rpm_label, rpm_text);
 }

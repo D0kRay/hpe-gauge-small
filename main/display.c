@@ -14,6 +14,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
+#include "driver/i2c_master.h"
 #include "lvgl.h"
 
 static const char *TAG = "display";
@@ -137,6 +138,21 @@ esp_err_t display_init(void)
     lv_display_set_buffers(s_lv_disp, s_buf1, s_buf2, 240 * 40 * sizeof(lv_color_t), LV_DISPLAY_RENDER_MODE_PARTIAL);
     lv_display_set_flush_cb(s_lv_disp, flush_cb);
 
+    i2c_master_bus_handle_t i2c_bus_handle = NULL;
+    i2c_master_bus_config_t i2c_bus_config = {
+        .i2c_port = bsp->i2c_port,
+        .sda_io_num = bsp->pin_i2c_sda,
+        .scl_io_num = bsp->pin_i2c_scl,
+        .clk_source = I2C_CLK_SRC_DEFAULT,
+        .glitch_ignore_cnt = 7,
+        .flags.enable_internal_pullup = true,
+    };
+    ESP_RETURN_ON_ERROR(i2c_new_master_bus(&i2c_bus_config, &i2c_bus_handle), TAG, "i2c master bus init failed");
+
+    esp_lcd_panel_io_handle_t tp_io_handle = NULL;
+    esp_lcd_panel_io_i2c_config_t tp_io_config = ESP_LCD_TOUCH_IO_I2C_CST816S_CONFIG();
+    ESP_RETURN_ON_ERROR(esp_lcd_new_panel_io_i2c(i2c_bus_handle, &tp_io_config, &tp_io_handle), TAG, "new touch panel io failed");
+
     esp_lcd_touch_config_t tp_cfg = {
         .x_max = 240,
         .y_max = 240,
@@ -152,7 +168,7 @@ esp_err_t display_init(void)
             .mirror_y = 0,
         },
     };
-    ret = esp_lcd_touch_new_i2c_cst816s(bsp->i2c_port, &tp_cfg, &s_touch);
+    ret = esp_lcd_touch_new_i2c_cst816s(tp_io_handle, &tp_cfg, &s_touch);
     if (ret != ESP_OK) {
         ESP_LOGW(TAG, "touch init failed: %s", esp_err_to_name(ret));
     } else {
