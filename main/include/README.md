@@ -11,6 +11,7 @@ These headers define the public interfaces used across the application component
 - `can_console.h`: console command registration for CAN profile management.
 - `can_service.h`: TWAI receive service startup entrypoint.
 - `sensor_rtc.h`: IMU/RTC probe initialization and status access.
+- `web_ui.h`: WiFi AP + HTTP/WebSocket UI startup entrypoint.
 
 ## Notes for developers
 

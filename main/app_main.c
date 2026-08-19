@@ -10,6 +10,7 @@
 #include "nvs_flash.h"
 #include "sensor_rtc.h"
 #include "ui.h"
+#include "web_ui.h"
 
 static const char *TAG = "app";
 
@@ -37,6 +38,7 @@ void app_main(void)
     ESP_ERROR_CHECK(display_init());
     ESP_ERROR_CHECK(ui_init());
     ESP_ERROR_CHECK(can_service_start());
+    ESP_ERROR_CHECK(web_ui_start());
 
     ESP_LOGI(TAG, "System started. Use 'cancfg show' / 'cancfg set <name> <id> <start_bit> <bit_len> <le|be> <signed> <factor> <offset>' / 'cancfg save'.");
 }

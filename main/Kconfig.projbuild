@@ -77,6 +77,33 @@ config HPE_LVGL_TICK_MS
 
 endmenu
 
+menu "Web UI"
+
+config HPE_WIFI_AP_SSID
+    string "WiFi AP SSID"
+    default "hpe-gauge"
+
+config HPE_WIFI_AP_PASS
+    string "WiFi AP password (min 8 chars for WPA2, shorter => open AP)"
+    default "hpe-gauge"
+
+config HPE_WIFI_AP_CHANNEL
+    int "WiFi AP channel"
+    default 1
+    range 1 13
+
+config HPE_WIFI_MAX_CONN
+    int "Max WiFi/WebSocket clients"
+    default 4
+    range 1 8
+
+config HPE_WEB_WS_PERIOD_MS
+    int "WebSocket telemetry period (ms)"
+    default 500
+    range 100 5000
+
+endmenu
+
 menu "LVGL"
 
 config LV_USE_ARC

@@ -1,0 +1,8 @@
+site_name: hpe-gauge-small Wiki
+site_description: Developer wiki for the hpe-gauge-small ESP-IDF project
+repo_url: https://github.com/D0kRay/hpe-gauge-small
+theme:
+  name: mkdocs
+nav:
+  - Home: index.md
+  - Components: components.md

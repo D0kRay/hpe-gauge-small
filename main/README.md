@@ -12,6 +12,7 @@ This is the primary ESP-IDF application component. It contains startup logic, ha
 - `can_console.c`: `cancfg` shell command for show/set/save profile operations.
 - `can_service.c`: TWAI driver startup and frame parsing into speed/RPM values.
 - `sensor_rtc.c`: I2C initialization and QMI8658/PCF85063 detection status probes.
+- `web_ui.c`: WiFi AP startup plus mobile HTTP/WebSocket telemetry page.
 
 ## Public API
 

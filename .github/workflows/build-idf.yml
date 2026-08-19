@@ -22,6 +22,44 @@ jobs:
       - name: Build
         run: idf.py build
 
+      - name: Upload ESP-IDF build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: esp-idf-build
+          path: |
+            build/*.bin
+            build/*.elf
+            build/*.map
+            build/bootloader/*.bin
+            build/partition_table/*.bin
+            build/flasher_args.json
+
+  docs:
+    name: Build MkDocs Wiki
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Install MkDocs
+        run: pip install mkdocs
+
+      - name: Build docs site
+        run: mkdocs build --strict
+
+      - name: Upload wiki artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: wiki-site
+          path: site
+
   codeql:
     name: CodeQL Analysis
     runs-on: ubuntu-latest

@@ -16,6 +16,7 @@ ESP32-S3 ESP-IDF project for a 240x240 round gauge with:
 - USB Serial/JTAG console
 - QMI8658 IMU and PCF85063 RTC presence checks
 - LittleFS-backed DBC-style CAN signal mapping (`/littlefs/can_messages.cfg`)
+- WiFi AP mode with mobile web page and WebSocket live telemetry
 
 ## Managed components
 
@@ -52,6 +53,22 @@ GitHub Actions workflow:
 
 - `/home/runner/work/hpe-gauge-small/hpe-gauge-small/.github/workflows/build-idf.yml`
 - Runs on Linux runner using ESP-IDF container `espressif/idf:release-v6.0`
+- Workflow page: https://github.com/D0kRay/hpe-gauge-small/actions/workflows/build-idf.yml
+
+Artifacts produced by CI:
+
+- `esp-idf-build` firmware artifacts (bin/elf/map/flasher args)
+- `wiki-site` MkDocs wiki website build output
+
+Download artifacts from the latest workflow run on the Actions page above.
+
+## Mobile web UI
+
+The firmware starts a WiFi AP and HTTP/WebSocket server.
+
+- Connect phone to SSID from `HPE_WIFI_AP_SSID` (default: `hpe-gauge`)
+- Open `http://192.168.4.1/`
+- The page shows live speed/RPM plus IMU/RTC status over WebSocket
 
 ## Console CAN config commands
 

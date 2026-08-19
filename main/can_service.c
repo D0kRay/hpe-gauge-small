@@ -15,6 +15,7 @@ static const char *TAG = "can_service";
 
 static float s_speed;
 static float s_rpm;
+static portMUX_TYPE s_data_lock = portMUX_INITIALIZER_UNLOCKED;
 
 static bool get_bit_lsb_indexed(const uint8_t *data, uint8_t dlc, int bit_index, uint8_t *out_bit)
 {
@@ -99,13 +100,19 @@ static void can_rx_task(void *arg)
             can_signal_cfg_t rpm_sig = {0};
             bool have_speed = can_cfg_get_signal("speed", &speed_sig);
             bool have_rpm = can_cfg_get_signal("rpm", &rpm_sig);
+            float speed = s_speed;
+            float rpm = s_rpm;
             if (have_speed) {
-                parse_signal(&speed_sig, &msg, &s_speed);
+                parse_signal(&speed_sig, &msg, &speed);
             }
             if (have_rpm) {
-                parse_signal(&rpm_sig, &msg, &s_rpm);
+                parse_signal(&rpm_sig, &msg, &rpm);
             }
-            ui_set_speed_rpm(s_speed, s_rpm);
+            portENTER_CRITICAL(&s_data_lock);
+            s_speed = speed;
+            s_rpm = rpm;
+            portEXIT_CRITICAL(&s_data_lock);
+            ui_set_speed_rpm(speed, rpm);
         }
     }
 }
@@ -131,4 +138,19 @@ esp_err_t can_service_start(void)
     ESP_RETURN_ON_FALSE(xTaskCreate(can_rx_task, "can_rx", 4096, NULL, 6, NULL) == pdPASS, ESP_ERR_NO_MEM, TAG, "can task create failed");
 
     return ESP_OK;
+}
+
+void can_service_get_values(float *out_speed_kmh, float *out_rpm)
+{
+    portENTER_CRITICAL(&s_data_lock);
+    float speed = s_speed;
+    float rpm = s_rpm;
+    portEXIT_CRITICAL(&s_data_lock);
+
+    if (out_speed_kmh) {
+        *out_speed_kmh = speed;
+    }
+    if (out_rpm) {
+        *out_rpm = rpm;
+    }
 }
