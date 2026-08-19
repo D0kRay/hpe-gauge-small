@@ -17,10 +17,14 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Set target
-        run: idf.py set-target esp32s3
+        run: |
+          . "$IDF_PATH/export.sh"
+          idf.py set-target esp32s3
 
       - name: Build
-        run: idf.py build
+        run: |
+          . "$IDF_PATH/export.sh"
+          idf.py build
 
       - name: Upload ESP-IDF build artifacts
         uses: actions/upload-artifact@v4
@@ -79,10 +83,14 @@ jobs:
           languages: c-cpp
 
       - name: Set target
-        run: idf.py set-target esp32s3
+        run: |
+          . "$IDF_PATH/export.sh"
+          idf.py set-target esp32s3
 
       - name: Build
-        run: idf.py build
+        run: |
+          . "$IDF_PATH/export.sh"
+          idf.py build
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v3
