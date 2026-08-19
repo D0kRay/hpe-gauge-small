@@ -1,0 +1,28 @@
+idf_component_register(
+    SRCS
+        "app_main.c"
+        "bsp.c"
+        "display.c"
+        "ui.c"
+        "can_cfg.c"
+        "can_console.c"
+        "can_service.c"
+        "sensor_rtc.c"
+    INCLUDE_DIRS "include"
+    REQUIRES
+        esp_driver_spi
+        esp_driver_gpio
+        esp_driver_i2c
+        esp_lcd
+        esp_timer
+        lvgl
+        littlefs
+        esp_lcd_gc9a01
+        esp_lcd_touch
+        esp_lcd_touch_cst816s
+        esp_event
+        esp_netif
+        nvs_flash
+        console
+        twai
+)
