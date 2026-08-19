@@ -8,15 +8,16 @@ ESP32-S3 ESP-IDF project for a 240x240 round gauge with:
 
 - GC9A01 SPI display
 - CST816 touch controller
-- LVGL 9 UI:
+- LVGL 9 UI (modular per-screen files with custom C-class widgets):
   - Fancy speed + RPM round gauge page
   - CAN profile page
   - IMU/RTC status page
+  - OTA status page
 - TWAI/CAN interface (for MCP transceiver)
 - USB Serial/JTAG console
 - QMI8658 IMU and PCF85063 RTC presence checks
 - LittleFS-backed DBC-style CAN signal mapping (`/littlefs/can_messages.cfg`)
-- WiFi AP mode with mobile web page and WebSocket live telemetry
+- WiFi AP mode with mobile web page, WebSocket live telemetry, and signed-image OTA upload
 
 ## Managed components
 
@@ -69,6 +70,7 @@ The firmware starts a WiFi AP and HTTP/WebSocket server.
 - Connect phone to SSID from `HPE_WIFI_AP_SSID` (default: `hpe-gauge`)
 - Open `http://192.168.4.1/`
 - The page shows live speed/RPM plus IMU/RTC status over WebSocket
+- The page also supports uploading a signed firmware image to OTA slots
 
 ## Console CAN config commands
 
