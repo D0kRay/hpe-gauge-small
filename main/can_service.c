@@ -16,34 +16,89 @@ static const char *TAG = "can_service";
 static float s_speed;
 static float s_rpm;
 
+static bool get_bit_lsb_indexed(const uint8_t *data, uint8_t dlc, int bit_index, uint8_t *out_bit)
+{
+    if (bit_index < 0 || bit_index >= (dlc * 8)) {
+        return false;
+    }
+    uint8_t byte_index = (uint8_t)(bit_index / 8);
+    uint8_t bit_in_byte = (uint8_t)(bit_index % 8);
+    *out_bit = (data[byte_index] >> bit_in_byte) & 0x01U;
+    return true;
+}
+
+static int motorola_next_bit(int bit_index)
+{
+    return (bit_index % 8 == 0) ? (bit_index + 15) : (bit_index - 1);
+}
+
+static bool extract_raw_dbc(const can_signal_cfg_t *sig, const twai_message_t *msg, uint32_t *raw_out)
+{
+    if (sig->bit_length == 0 || sig->bit_length > 32) {
+        return false;
+    }
+    if (sig->start_bit >= (msg->data_length_code * 8)) {
+        return false;
+    }
+
+    uint32_t raw = 0;
+    if (sig->is_little_endian) {
+        uint64_t frame = 0;
+        for (uint8_t i = 0; i < msg->data_length_code; ++i) {
+            frame |= ((uint64_t)msg->data[i]) << (8 * i);
+        }
+        if ((sig->start_bit + sig->bit_length) > (msg->data_length_code * 8)) {
+            return false;
+        }
+        uint64_t mask = (sig->bit_length == 32) ? 0xFFFFFFFFULL : ((1ULL << sig->bit_length) - 1ULL);
+        raw = (uint32_t)((frame >> sig->start_bit) & mask);
+    } else {
+        int bit_idx = sig->start_bit;
+        for (uint8_t i = 0; i < sig->bit_length; ++i) {
+            uint8_t bit = 0;
+            if (!get_bit_lsb_indexed(msg->data, msg->data_length_code, bit_idx, &bit)) {
+                return false;
+            }
+            raw = (raw << 1) | bit;
+            bit_idx = motorola_next_bit(bit_idx);
+        }
+    }
+
+    *raw_out = raw;
+    return true;
+}
+
 static bool parse_signal(const can_signal_cfg_t *sig, const twai_message_t *msg, float *out)
 {
     if (msg->identifier != sig->can_id) {
         return false;
     }
-    if (sig->length_bytes == 0 || sig->length_bytes > 4 || sig->start_byte + sig->length_bytes > msg->data_length_code) {
+    uint32_t raw = 0;
+    if (!extract_raw_dbc(sig, msg, &raw)) {
         return false;
     }
-
-    uint32_t raw = 0;
-    for (uint8_t i = 0; i < sig->length_bytes; ++i) {
-        raw |= ((uint32_t)msg->data[sig->start_byte + i]) << (8 * i);
+    int32_t signed_raw = (int32_t)raw;
+    if (sig->is_signed && sig->bit_length < 32) {
+        uint32_t sign_bit = 1U << (sig->bit_length - 1);
+        if ((raw & sign_bit) != 0) {
+            signed_raw = (int32_t)(raw | (~0U << sig->bit_length));
+        }
     }
-    *out = (raw * sig->scale) + sig->offset;
+
+    *out = ((sig->is_signed ? (float)signed_raw : (float)raw) * sig->factor) + sig->offset;
     return true;
 }
 
 static void can_rx_task(void *arg)
 {
     (void)arg;
-    can_signal_cfg_t speed_sig = {0};
-    can_signal_cfg_t rpm_sig = {0};
-    bool have_speed = can_cfg_get_signal("speed", &speed_sig);
-    bool have_rpm = can_cfg_get_signal("rpm", &rpm_sig);
-
     while (true) {
         twai_message_t msg;
         if (twai_receive(&msg, pdMS_TO_TICKS(1000)) == ESP_OK) {
+            can_signal_cfg_t speed_sig = {0};
+            can_signal_cfg_t rpm_sig = {0};
+            bool have_speed = can_cfg_get_signal("speed", &speed_sig);
+            bool have_rpm = can_cfg_get_signal("rpm", &rpm_sig);
             if (have_speed) {
                 parse_signal(&speed_sig, &msg, &s_speed);
             }

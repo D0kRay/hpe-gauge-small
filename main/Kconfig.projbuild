@@ -87,6 +87,10 @@ config LV_USE_MENU
     bool "Enable LVGL menu widget"
     default y
 
+config LV_USE_TABVIEW
+    bool "Enable LVGL tabview widget"
+    default y
+
 config LV_USE_LABEL
     bool "Enable LVGL label widget"
     default y

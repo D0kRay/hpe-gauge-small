@@ -10,6 +10,7 @@
 #define PCF85063_ADDR 0x51
 
 static const char *TAG = "sensor_rtc";
+static sensor_rtc_status_t s_status;
 
 static esp_err_t i2c_read_reg(i2c_port_t port, uint8_t addr, uint8_t reg, uint8_t *data, size_t len)
 {
@@ -46,8 +47,12 @@ esp_err_t sensor_rtc_init(void)
     ESP_RETURN_ON_ERROR(i2c_param_config(bsp->i2c_port, &conf), TAG, "i2c param config failed");
     ESP_RETURN_ON_ERROR(i2c_driver_install(bsp->i2c_port, conf.mode, 0, 0, 0), TAG, "i2c driver install failed");
 
+    memset(&s_status, 0, sizeof(s_status));
+
     uint8_t qmi_whoami = 0;
     if (i2c_read_reg(bsp->i2c_port, QMI8658_ADDR, 0x00, &qmi_whoami, 1) == ESP_OK) {
+        s_status.imu_detected = true;
+        s_status.imu_whoami = qmi_whoami;
         ESP_LOGI(TAG, "QMI8658 WHO_AM_I: 0x%02X", qmi_whoami);
     } else {
         ESP_LOGW(TAG, "QMI8658 not detected");
@@ -55,10 +60,17 @@ esp_err_t sensor_rtc_init(void)
 
     uint8_t rtc_ctrl = 0;
     if (i2c_read_reg(bsp->i2c_port, PCF85063_ADDR, 0x00, &rtc_ctrl, 1) == ESP_OK) {
+        s_status.rtc_detected = true;
+        s_status.rtc_ctrl1 = rtc_ctrl;
         ESP_LOGI(TAG, "PCF85063 CTRL1: 0x%02X", rtc_ctrl);
     } else {
         ESP_LOGW(TAG, "PCF85063 not detected");
     }
 
     return ESP_OK;
+}
+
+sensor_rtc_status_t sensor_rtc_get_status(void)
+{
+    return s_status;
 }

@@ -10,9 +10,11 @@
 typedef struct {
     char name[CAN_SIGNAL_NAME_MAX];
     uint32_t can_id;
-    uint8_t start_byte;
-    uint8_t length_bytes;
-    float scale;
+    uint16_t start_bit;
+    uint8_t bit_length;
+    bool is_little_endian;
+    bool is_signed;
+    float factor;
     float offset;
 } can_signal_cfg_t;
 

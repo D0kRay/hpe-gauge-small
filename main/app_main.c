@@ -5,7 +5,6 @@
 #include "esp_check.h"
 #include "esp_console.h"
 #include "esp_err.h"
-#include "esp_idf_version.h"
 #include "esp_log.h"
 #include "linenoise/linenoise.h"
 #include "nvs_flash.h"
@@ -39,5 +38,5 @@ void app_main(void)
     ESP_ERROR_CHECK(ui_init());
     ESP_ERROR_CHECK(can_service_start());
 
-    ESP_LOGI(TAG, "System started. Use 'cancfg show' / 'cancfg set ...' / 'cancfg save' on USB JTAG console.");
+    ESP_LOGI(TAG, "System started. Use 'cancfg show' / 'cancfg set <name> <id> <start_bit> <bit_len> <le|be> <signed> <factor> <offset>' / 'cancfg save'.");
 }
