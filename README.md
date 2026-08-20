@@ -17,6 +17,7 @@ ESP32-S3 ESP-IDF project for a 240x240 round gauge with:
 - USB Serial/JTAG console
 - QMI8658 IMU and PCF85063 RTC presence checks
 - LittleFS-backed DBC-style CAN signal mapping (`/littlefs/can_messages.cfg`)
+- LittleFS-backed runtime web widget mapping (`/littlefs/widget_map.cfg`)
 - WiFi AP mode with mobile web page, WebSocket live telemetry, and signed-image OTA upload
 
 ## Managed components
@@ -77,6 +78,7 @@ The firmware starts a WiFi AP and HTTP/WebSocket server.
 - Connect phone to SSID from `HPE_WIFI_AP_SSID` (default: `hpe-gauge`)
 - Open `http://192.168.4.1/`
 - The page shows live speed/RPM plus IMU/RTC status over WebSocket
+- The page also shows all configured CAN signals and lets you map them to custom web widgets at runtime
 - The page also supports uploading a signed firmware image to OTA slots
 
 ## Console CAN config commands
@@ -84,6 +86,7 @@ The firmware starts a WiFi AP and HTTP/WebSocket server.
 ```text
 cancfg show
 cancfg set speed 100 0 16 le 0 0.01 0
+cancfg set boost 102 16 8 le 1 0.5 -1
 cancfg save
 ```
 
@@ -95,3 +98,10 @@ name,can_id_hex,start_bit,bit_length,endian,signed,factor,offset
 
 - `endian`: `le` (Intel) or `be` (Motorola)
 - `signed`: `0` unsigned, `1` signed
+- Web widget mappings are saved in `/littlefs/widget_map.cfg` as:
+
+```text
+signal,label,unit,type
+```
+
+- `type`: `big` or `small`

@@ -18,6 +18,8 @@ static const char *TAG = "can_service";
 
 static float s_speed;
 static float s_rpm;
+static float s_signal_values[CAN_CFG_MAX_SIGNALS];
+static bool s_signal_has_value[CAN_CFG_MAX_SIGNALS];
 static portMUX_TYPE s_data_lock = portMUX_INITIALIZER_UNLOCKED;
 
 static bool get_bit_lsb_indexed(const uint8_t *data, uint8_t dlc, int bit_index, uint8_t *out_bit)
@@ -99,21 +101,40 @@ static void can_rx_task(void *arg)
     while (true) {
         twai_message_t msg;
         if (twai_receive(&msg, pdMS_TO_TICKS(1000)) == ESP_OK) {
-            can_signal_cfg_t speed_sig = {0};
-            can_signal_cfg_t rpm_sig = {0};
-            bool have_speed = can_cfg_get_signal("speed", &speed_sig);
-            bool have_rpm = can_cfg_get_signal("rpm", &rpm_sig);
-            float speed = s_speed;
-            float rpm = s_rpm;
-            if (have_speed) {
-                parse_signal(&speed_sig, &msg, &speed);
+            const can_cfg_t *cfg = can_cfg_get();
+            float speed = 0.0f;
+            float rpm = 0.0f;
+            float signal_values[CAN_CFG_MAX_SIGNALS];
+            bool signal_has_value[CAN_CFG_MAX_SIGNALS];
+
+            portENTER_CRITICAL(&s_data_lock);
+            speed = s_speed;
+            rpm = s_rpm;
+            memcpy(signal_values, s_signal_values, sizeof(signal_values));
+            memcpy(signal_has_value, s_signal_has_value, sizeof(signal_has_value));
+            portEXIT_CRITICAL(&s_data_lock);
+
+            for (uint8_t i = 0; i < cfg->signal_count && i < CAN_CFG_MAX_SIGNALS; ++i) {
+                float parsed_value = 0.0f;
+                if (!parse_signal(&cfg->signals[i], &msg, &parsed_value)) {
+                    continue;
+                }
+
+                signal_values[i] = parsed_value;
+                signal_has_value[i] = true;
+
+                if (strncmp(cfg->signals[i].name, "speed", CAN_SIGNAL_NAME_MAX) == 0) {
+                    speed = parsed_value;
+                } else if (strncmp(cfg->signals[i].name, "rpm", CAN_SIGNAL_NAME_MAX) == 0) {
+                    rpm = parsed_value;
+                }
             }
-            if (have_rpm) {
-                parse_signal(&rpm_sig, &msg, &rpm);
-            }
+
             portENTER_CRITICAL(&s_data_lock);
             s_speed = speed;
             s_rpm = rpm;
+            memcpy(s_signal_values, signal_values, sizeof(s_signal_values));
+            memcpy(s_signal_has_value, signal_has_value, sizeof(s_signal_has_value));
             portEXIT_CRITICAL(&s_data_lock);
             ui_set_speed_rpm(speed, rpm);
         }
@@ -156,4 +177,29 @@ void can_service_get_values(float *out_speed_kmh, float *out_rpm)
     if (out_rpm) {
         *out_rpm = rpm;
     }
+}
+
+size_t can_service_get_signal_values(can_service_signal_value_t *out_values, size_t max_values)
+{
+    const can_cfg_t *cfg = can_cfg_get();
+    size_t signal_count = cfg->signal_count;
+    if (signal_count > CAN_CFG_MAX_SIGNALS) {
+        signal_count = CAN_CFG_MAX_SIGNALS;
+    }
+
+    if (!out_values || max_values == 0) {
+        return signal_count;
+    }
+
+    size_t to_copy = signal_count < max_values ? signal_count : max_values;
+    portENTER_CRITICAL(&s_data_lock);
+    for (size_t i = 0; i < to_copy; ++i) {
+        memset(&out_values[i], 0, sizeof(out_values[i]));
+        strncpy(out_values[i].name, cfg->signals[i].name, CAN_SIGNAL_NAME_MAX - 1);
+        out_values[i].value = s_signal_values[i];
+        out_values[i].has_value = s_signal_has_value[i];
+    }
+    portEXIT_CRITICAL(&s_data_lock);
+
+    return signal_count;
 }
