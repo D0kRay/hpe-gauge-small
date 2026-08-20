@@ -2,7 +2,7 @@
 
 #include <string.h>
 #include "bsp.h"
-#include "driver/i2c.h"
+#include "driver/i2c_master.h"
 #include "esp_check.h"
 #include "esp_log.h"
 
@@ -12,45 +12,45 @@
 static const char *TAG = "sensor_rtc";
 static sensor_rtc_status_t s_status;
 
-static esp_err_t i2c_read_reg(i2c_port_t port, uint8_t addr, uint8_t reg, uint8_t *data, size_t len)
+static esp_err_t i2c_read_reg(i2c_master_dev_handle_t dev, uint8_t reg, uint8_t *data, size_t len)
 {
-    i2c_cmd_handle_t cmd = i2c_cmd_link_create();
-    ESP_RETURN_ON_FALSE(cmd != NULL, ESP_ERR_NO_MEM, TAG, "i2c cmd alloc failed");
-    i2c_master_start(cmd);
-    i2c_master_write_byte(cmd, (addr << 1) | I2C_MASTER_WRITE, true);
-    i2c_master_write_byte(cmd, reg, true);
-    i2c_master_start(cmd);
-    i2c_master_write_byte(cmd, (addr << 1) | I2C_MASTER_READ, true);
-    if (len > 1) {
-        i2c_master_read(cmd, data, len - 1, I2C_MASTER_ACK);
-    }
-    i2c_master_read_byte(cmd, &data[len - 1], I2C_MASTER_NACK);
-    i2c_master_stop(cmd);
-    esp_err_t ret = i2c_master_cmd_begin(port, cmd, pdMS_TO_TICKS(100));
-    i2c_cmd_link_delete(cmd);
-    return ret;
+    return i2c_master_transmit_receive(dev, &reg, sizeof(reg), data, len, 100);
 }
 
 esp_err_t sensor_rtc_init(void)
 {
     const bsp_config_t *bsp = bsp_config_get();
-
-    i2c_config_t conf = {
-        .mode = I2C_MODE_MASTER,
+    i2c_master_bus_handle_t bus = NULL;
+    i2c_master_bus_config_t bus_cfg = {
+        .i2c_port = bsp->i2c_port,
         .sda_io_num = bsp->pin_i2c_sda,
         .scl_io_num = bsp->pin_i2c_scl,
-        .sda_pullup_en = GPIO_PULLUP_ENABLE,
-        .scl_pullup_en = GPIO_PULLUP_ENABLE,
-        .master.clk_speed = 400000,
+        .clk_source = I2C_CLK_SRC_DEFAULT,
+        .glitch_ignore_cnt = 7,
+        .flags.enable_internal_pullup = true,
     };
+    ESP_RETURN_ON_ERROR(i2c_new_master_bus(&bus_cfg, &bus), TAG, "i2c master bus init failed");
 
-    ESP_RETURN_ON_ERROR(i2c_param_config(bsp->i2c_port, &conf), TAG, "i2c param config failed");
-    ESP_RETURN_ON_ERROR(i2c_driver_install(bsp->i2c_port, conf.mode, 0, 0, 0), TAG, "i2c driver install failed");
+    i2c_device_config_t qmi_cfg = {
+        .dev_addr_length = I2C_ADDR_BIT_LEN_7,
+        .device_address = QMI8658_ADDR,
+        .scl_speed_hz = 400000,
+    };
+    i2c_master_dev_handle_t qmi_dev = NULL;
+    ESP_RETURN_ON_ERROR(i2c_master_bus_add_device(bus, &qmi_cfg, &qmi_dev), TAG, "QMI8658 i2c add failed");
+
+    i2c_device_config_t rtc_cfg = {
+        .dev_addr_length = I2C_ADDR_BIT_LEN_7,
+        .device_address = PCF85063_ADDR,
+        .scl_speed_hz = 400000,
+    };
+    i2c_master_dev_handle_t rtc_dev = NULL;
+    ESP_RETURN_ON_ERROR(i2c_master_bus_add_device(bus, &rtc_cfg, &rtc_dev), TAG, "PCF85063 i2c add failed");
 
     memset(&s_status, 0, sizeof(s_status));
 
     uint8_t qmi_whoami = 0;
-    if (i2c_read_reg(bsp->i2c_port, QMI8658_ADDR, 0x00, &qmi_whoami, 1) == ESP_OK) {
+    if (i2c_read_reg(qmi_dev, 0x00, &qmi_whoami, 1) == ESP_OK) {
         s_status.imu_detected = true;
         s_status.imu_whoami = qmi_whoami;
         ESP_LOGI(TAG, "QMI8658 WHO_AM_I: 0x%02X", qmi_whoami);
@@ -59,13 +59,17 @@ esp_err_t sensor_rtc_init(void)
     }
 
     uint8_t rtc_ctrl = 0;
-    if (i2c_read_reg(bsp->i2c_port, PCF85063_ADDR, 0x00, &rtc_ctrl, 1) == ESP_OK) {
+    if (i2c_read_reg(rtc_dev, 0x00, &rtc_ctrl, 1) == ESP_OK) {
         s_status.rtc_detected = true;
         s_status.rtc_ctrl1 = rtc_ctrl;
         ESP_LOGI(TAG, "PCF85063 CTRL1: 0x%02X", rtc_ctrl);
     } else {
         ESP_LOGW(TAG, "PCF85063 not detected");
     }
+
+    i2c_master_bus_rm_device(rtc_dev);
+    i2c_master_bus_rm_device(qmi_dev);
+    i2c_del_master_bus(bus);
 
     return ESP_OK;
 }
