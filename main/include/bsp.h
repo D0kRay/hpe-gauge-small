@@ -2,7 +2,7 @@
 
 #include <stdint.h>
 #include "driver/gpio.h"
-#include "driver/i2c.h"
+#include "driver/i2c_master.h"
 #include "driver/spi_master.h"
 
 /**
@@ -17,7 +17,7 @@ typedef struct {
     gpio_num_t pin_lcd_rst;
     gpio_num_t pin_lcd_bl;
 
-    i2c_port_t i2c_port;
+    i2c_port_num_t i2c_port;
     gpio_num_t pin_i2c_sda;
     gpio_num_t pin_i2c_scl;
     gpio_num_t pin_touch_int;

@@ -8,7 +8,10 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "hal/twai_types.h"
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wcpp"
 #include "driver/twai.h"
+#pragma GCC diagnostic pop
 #include "ui.h"
 
 static const char *TAG = "can_service";
@@ -125,9 +128,9 @@ esp_err_t can_service_start(void)
     twai_timing_config_t t_config = TWAI_TIMING_CONFIG_500KBITS();
 
     if (bsp->twai_bitrate == 250000) {
-        t_config = TWAI_TIMING_CONFIG_250KBITS();
+        t_config = (twai_timing_config_t)TWAI_TIMING_CONFIG_250KBITS();
     } else if (bsp->twai_bitrate == 1000000) {
-        t_config = TWAI_TIMING_CONFIG_1MBITS();
+        t_config = (twai_timing_config_t)TWAI_TIMING_CONFIG_1MBITS();
     }
 
     twai_filter_config_t f_config = TWAI_FILTER_CONFIG_ACCEPT_ALL();

@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <inttypes.h>
 #include <sys/stat.h>
 #include "esp_check.h"
 #include "esp_littlefs.h"
@@ -126,7 +127,7 @@ esp_err_t can_cfg_save(void)
     fprintf(f, "#name,can_id_hex,start_bit,bit_length,endian,signed,factor,offset\n");
     for (uint8_t i = 0; i < s_cfg.signal_count; ++i) {
         const can_signal_cfg_t *sig = &s_cfg.signals[i];
-        fprintf(f, "%s,%03x,%u,%u,%s,%u,%.5f,%.5f\n",
+        fprintf(f, "%s,%03" PRIx32 ",%u,%u,%s,%u,%.5f,%.5f\n",
                 sig->name,
                 sig->can_id,
                 sig->start_bit,
