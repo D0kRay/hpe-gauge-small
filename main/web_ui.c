@@ -746,6 +746,7 @@ static esp_err_t web_server_start(void)
 {
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
     config.max_open_sockets = CONFIG_HPE_WIFI_MAX_CONN + 2;
+    config.stack_size = 10240;
 
     ESP_RETURN_ON_ERROR(httpd_start(&s_httpd, &config), TAG, "httpd start failed");
 
