@@ -25,10 +25,13 @@ esp_err_t ui_screen_can_init(ui_screen_can_t *screen, lv_obj_t *parent, ui_scree
     lv_obj_align(screen->panel, LV_ALIGN_TOP_LEFT, 4, 4);
     ui_widget_info_panel_set_title(screen->panel, "CAN profile");
 
-    screen->refresh_btn = lv_button_create(parent);
-    ESP_RETURN_ON_FALSE(screen->refresh_btn != NULL, ESP_ERR_NO_MEM, "ui_screen_can", "button create failed");
+    screen->refresh_btn = lv_obj_create(parent);
+    ESP_RETURN_ON_FALSE(screen->refresh_btn != NULL, ESP_ERR_NO_MEM, "ui_screen_can", "refresh control create failed");
     lv_obj_set_size(screen->refresh_btn, 94, 32);
     lv_obj_align(screen->refresh_btn, LV_ALIGN_BOTTOM_RIGHT, -4, -4);
+    lv_obj_set_style_pad_all(screen->refresh_btn, 6, 0);
+    lv_obj_set_style_radius(screen->refresh_btn, 8, 0);
+    lv_obj_add_flag(screen->refresh_btn, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_add_event_cb(screen->refresh_btn, can_refresh_btn_cb, LV_EVENT_CLICKED, screen);
 
     lv_obj_t *refresh_lbl = lv_label_create(screen->refresh_btn);

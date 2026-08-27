@@ -23,7 +23,10 @@ void app_main(void)
     }
     ESP_ERROR_CHECK(ret);
 
-    ESP_ERROR_CHECK(sensor_rtc_init());
+    ret = sensor_rtc_init();
+    if (ret != ESP_OK) {
+        ESP_LOGW(TAG, "sensor/rtc init failed, continuing: %s", esp_err_to_name(ret));
+    }
     ESP_ERROR_CHECK(can_cfg_init());
 
     esp_console_config_t console_cfg = {
@@ -37,7 +40,11 @@ void app_main(void)
 
     ESP_ERROR_CHECK(display_init());
     ESP_ERROR_CHECK(ui_init());
-    ESP_ERROR_CHECK(can_service_start());
+    ESP_ERROR_CHECK(display_start());
+    ret = can_service_start();
+    if (ret != ESP_OK) {
+        ESP_LOGW(TAG, "TWAI init failed, continuing without CAN RX: %s", esp_err_to_name(ret));
+    }
     ESP_ERROR_CHECK(web_ui_start());
 
     ESP_LOGI(TAG, "System started. Use 'cancfg show' / 'cancfg set <name> <id> <start_bit> <bit_len> <le|be> <signed> <factor> <offset>' / 'cancfg save'.");

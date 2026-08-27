@@ -26,6 +26,18 @@ static lv_display_t *s_lv_disp;
 static lv_indev_t *s_lv_indev;
 static lv_color_t *s_buf1;
 static lv_color_t *s_buf2;
+static bool s_lvgl_task_started;
+static uint32_t s_touch_log_div;
+
+static inline void swap_rgb565_bytes(const lv_area_t *area, uint8_t *px_map)
+{
+    size_t px_count = (size_t)(area->x2 - area->x1 + 1) * (size_t)(area->y2 - area->y1 + 1);
+    uint16_t *pixels = (uint16_t *)px_map;
+    for (size_t i = 0; i < px_count; ++i) {
+        uint16_t v = pixels[i];
+        pixels[i] = (uint16_t)((v >> 8) | (v << 8));
+    }
+}
 
 static void lv_tick_cb(void *arg)
 {
@@ -36,35 +48,54 @@ static void lv_tick_cb(void *arg)
 static void lvgl_task(void *arg)
 {
     (void)arg;
+    ESP_LOGI(TAG, "lvgl task started");
+    uint32_t loop_count = 0;
     while (true) {
         display_lvgl_lock();
         lv_timer_handler();
         display_lvgl_unlock();
+        loop_count++;
+        if ((loop_count % 400) == 0) {
+            ESP_LOGI(TAG, "lvgl alive loops=%lu", (unsigned long)loop_count);
+        }
         vTaskDelay(pdMS_TO_TICKS(5));
     }
 }
 
 static void flush_cb(lv_display_t *disp, const lv_area_t *area, uint8_t *px_map)
 {
-    (void)disp;
-    esp_lcd_panel_draw_bitmap(s_panel, area->x1, area->y1, area->x2 + 1, area->y2 + 1, px_map);
+    swap_rgb565_bytes(area, px_map);
+    esp_err_t ret = esp_lcd_panel_draw_bitmap(s_panel, area->x1, area->y1, area->x2 + 1, area->y2 + 1, px_map);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "flush draw failed: %s", esp_err_to_name(ret));
+    }
     lv_display_flush_ready(disp);
 }
 
 static void touch_read_cb(lv_indev_t *indev, lv_indev_data_t *data)
 {
     (void)indev;
-    uint16_t x[1] = {0};
-    uint16_t y[1] = {0};
-    uint16_t strength[1] = {0};
-    uint8_t points = 0;
+    if (!s_touch) {
+        data->state = LV_INDEV_STATE_RELEASED;
+        return;
+    }
 
-    esp_lcd_touch_read_data(s_touch);
-    bool touched = esp_lcd_touch_get_coordinates(s_touch, x, y, strength, &points, 1);
-    if (touched && points > 0) {
+    esp_err_t ret = esp_lcd_touch_read_data(s_touch);
+    if (ret != ESP_OK) {
+        data->state = LV_INDEV_STATE_RELEASED;
+        return;
+    }
+
+    esp_lcd_touch_point_data_t points[1] = {0};
+    uint8_t point_count = 0;
+    ret = esp_lcd_touch_get_data(s_touch, points, &point_count, 1);
+    if (ret == ESP_OK && point_count > 0) {
         data->state = LV_INDEV_STATE_PRESSED;
-        data->point.x = (int16_t)x[0];
-        data->point.y = (int16_t)y[0];
+        data->point.x = (int16_t)points[0].x;
+        data->point.y = (int16_t)points[0].y;
+        if ((s_touch_log_div++ % 20U) == 0U) {
+            ESP_LOGI(TAG, "touch press x=%d y=%d", (int)data->point.x, (int)data->point.y);
+        }
     } else {
         data->state = LV_INDEV_STATE_RELEASED;
     }
@@ -118,7 +149,7 @@ esp_err_t display_init(void)
     ESP_RETURN_ON_ERROR(esp_lcd_new_panel_gc9a01(io_handle, &panel_config, &s_panel), TAG, "new gc9a01 panel failed");
     ESP_RETURN_ON_ERROR(esp_lcd_panel_reset(s_panel), TAG, "panel reset failed");
     ESP_RETURN_ON_ERROR(esp_lcd_panel_init(s_panel), TAG, "panel init failed");
-    ESP_RETURN_ON_ERROR(esp_lcd_panel_invert_color(s_panel, true), TAG, "panel invert failed");
+    ESP_RETURN_ON_ERROR(esp_lcd_panel_invert_color(s_panel, false), TAG, "panel invert failed");
     ESP_RETURN_ON_ERROR(esp_lcd_panel_mirror(s_panel, true, false), TAG, "panel mirror failed");
     ESP_RETURN_ON_ERROR(esp_lcd_panel_disp_on_off(s_panel, true), TAG, "panel on failed");
 
@@ -175,6 +206,7 @@ esp_err_t display_init(void)
         s_lv_indev = lv_indev_create();
         lv_indev_set_type(s_lv_indev, LV_INDEV_TYPE_POINTER);
         lv_indev_set_read_cb(s_lv_indev, touch_read_cb);
+        lv_indev_set_display(s_lv_indev, s_lv_disp);
     }
 
     const esp_timer_create_args_t tick_args = {
@@ -185,7 +217,19 @@ esp_err_t display_init(void)
     ESP_RETURN_ON_ERROR(esp_timer_create(&tick_args, &tick_timer), TAG, "lv tick create failed");
     ESP_RETURN_ON_ERROR(esp_timer_start_periodic(tick_timer, CONFIG_HPE_LVGL_TICK_MS * 1000), TAG, "lv tick start failed");
 
-    ESP_RETURN_ON_FALSE(xTaskCreate(lvgl_task, "lvgl", 4096, NULL, 5, NULL) == pdPASS, ESP_ERR_NO_MEM, TAG, "lv task create failed");
+    return ESP_OK;
+}
 
+esp_err_t display_start(void)
+{
+    if (s_lvgl_task_started) {
+        return ESP_OK;
+    }
+
+    ESP_LOGI(TAG, "starting lvgl task");
+
+    ESP_RETURN_ON_FALSE(xTaskCreatePinnedToCore(lvgl_task, "lvgl", 16384, NULL, 5, NULL, 1) == pdPASS,
+                        ESP_ERR_NO_MEM, TAG, "lv task create failed");
+    s_lvgl_task_started = true;
     return ESP_OK;
 }

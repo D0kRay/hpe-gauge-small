@@ -203,19 +203,27 @@ static void widget_map_set_defaults(void)
 
 static esp_err_t widget_map_save(void)
 {
+    web_widget_map_t local_map[CAN_CFG_MAX_SIGNALS];
+    uint8_t local_count = 0;
+    portENTER_CRITICAL(&s_widget_lock);
+    local_count = s_widget_count;
+    if (local_count > CAN_CFG_MAX_SIGNALS) {
+        local_count = CAN_CFG_MAX_SIGNALS;
+    }
+    memcpy(local_map, s_widget_map, sizeof(local_map));
+    portEXIT_CRITICAL(&s_widget_lock);
+
     FILE *f = fopen(WEB_WIDGET_CFG_PATH, "w");
     ESP_RETURN_ON_FALSE(f != NULL, ESP_FAIL, TAG, "open %s failed", WEB_WIDGET_CFG_PATH);
 
     fprintf(f, "#signal,label,unit,type\n");
-    portENTER_CRITICAL(&s_widget_lock);
-    for (uint8_t i = 0; i < s_widget_count; ++i) {
+    for (uint8_t i = 0; i < local_count; ++i) {
         fprintf(f, "%s,%s,%s,%s\n",
-                s_widget_map[i].signal,
-                s_widget_map[i].label,
-                s_widget_map[i].unit,
-                s_widget_map[i].type);
+                local_map[i].signal,
+                local_map[i].label,
+                local_map[i].unit,
+                local_map[i].type);
     }
-    portEXIT_CRITICAL(&s_widget_lock);
     fclose(f);
     return ESP_OK;
 }
@@ -279,7 +287,12 @@ static esp_err_t widget_map_get_handler(httpd_req_t *req)
 {
     char payload[2048];
     int off = 0;
-    off += snprintf(payload + off, sizeof(payload) - (size_t)off, "{\"signals\":[");
+    int wrote = snprintf(payload + off, sizeof(payload) - (size_t)off, "{\"signals\":[");
+    if (wrote <= 0 || wrote >= (int)(sizeof(payload) - (size_t)off)) {
+        httpd_resp_set_status(req, "500 Internal Server Error");
+        return httpd_resp_sendstr(req, "{\"error\":\"payload overflow\"}");
+    }
+    off += wrote;
 
     can_service_signal_value_t values[CAN_CFG_MAX_SIGNALS];
     size_t signal_count = can_service_get_signal_values(values, CAN_CFG_MAX_SIGNALS);
@@ -287,10 +300,22 @@ static esp_err_t widget_map_get_handler(httpd_req_t *req)
         signal_count = CAN_CFG_MAX_SIGNALS;
     }
     for (size_t i = 0; i < signal_count && off < (int)sizeof(payload) - 1; ++i) {
-        off += snprintf(payload + off, sizeof(payload) - (size_t)off, "%s\"%s\"", i == 0 ? "" : ",", values[i].name);
+        wrote = snprintf(payload + off, sizeof(payload) - (size_t)off, "%s\"%s\"", i == 0 ? "" : ",", values[i].name);
+        if (wrote <= 0 || wrote >= (int)(sizeof(payload) - (size_t)off)) {
+            off = (int)sizeof(payload) - 1;
+            break;
+        }
+        off += wrote;
     }
 
-    off += snprintf(payload + off, sizeof(payload) - (size_t)off, "],\"widgets\":[");
+    if (off < (int)sizeof(payload) - 1) {
+        wrote = snprintf(payload + off, sizeof(payload) - (size_t)off, "],\"widgets\":[");
+        if (wrote <= 0 || wrote >= (int)(sizeof(payload) - (size_t)off)) {
+            off = (int)sizeof(payload) - 1;
+        } else {
+            off += wrote;
+        }
+    }
     portENTER_CRITICAL(&s_widget_lock);
     uint8_t widget_count = s_widget_count;
     web_widget_map_t widgets[CAN_CFG_MAX_SIGNALS];
@@ -298,16 +323,28 @@ static esp_err_t widget_map_get_handler(httpd_req_t *req)
     portEXIT_CRITICAL(&s_widget_lock);
 
     for (uint8_t i = 0; i < widget_count && off < (int)sizeof(payload) - 1; ++i) {
-        off += snprintf(payload + off, sizeof(payload) - (size_t)off,
-                        "%s{\"signal\":\"%s\",\"label\":\"%s\",\"unit\":\"%s\",\"type\":\"%s\"}",
-                        i == 0 ? "" : ",",
-                        widgets[i].signal,
-                        widgets[i].label,
-                        widgets[i].unit,
-                        widgets[i].type);
+        wrote = snprintf(payload + off, sizeof(payload) - (size_t)off,
+                         "%s{\"signal\":\"%s\",\"label\":\"%s\",\"unit\":\"%s\",\"type\":\"%s\"}",
+                         i == 0 ? "" : ",",
+                         widgets[i].signal,
+                         widgets[i].label,
+                         widgets[i].unit,
+                         widgets[i].type);
+        if (wrote <= 0 || wrote >= (int)(sizeof(payload) - (size_t)off)) {
+            off = (int)sizeof(payload) - 1;
+            break;
+        }
+        off += wrote;
     }
 
-    off += snprintf(payload + off, sizeof(payload) - (size_t)off, "]}");
+    if (off < (int)sizeof(payload) - 1) {
+        wrote = snprintf(payload + off, sizeof(payload) - (size_t)off, "]}");
+        if (wrote > 0 && wrote < (int)(sizeof(payload) - (size_t)off)) {
+            off += wrote;
+        } else {
+            off = (int)sizeof(payload) - 1;
+        }
+    }
     if (off >= (int)sizeof(payload)) {
         payload[sizeof(payload) - 1] = '\0';
     }
@@ -756,7 +793,7 @@ esp_err_t web_ui_start(void)
     ota_state_set("idle", 0, false, false);
     ESP_RETURN_ON_ERROR(wifi_ap_start(), TAG, "wifi AP start failed");
     ESP_RETURN_ON_ERROR(web_server_start(), TAG, "web server start failed");
-    ESP_RETURN_ON_FALSE(xTaskCreate(ws_broadcast_task, "ws_broadcast", 4096, NULL, 4, NULL) == pdPASS,
+    ESP_RETURN_ON_FALSE(xTaskCreatePinnedToCore(ws_broadcast_task, "ws_broadcast", 8192, NULL, 4, NULL, 0) == pdPASS,
                         ESP_ERR_NO_MEM, TAG, "ws task create failed");
     return ESP_OK;
 }

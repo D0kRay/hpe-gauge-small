@@ -1,0 +1,2 @@
+部分传感器未焊接但编写了驱动代码
+Some sensors are not soldered but driver codes are written

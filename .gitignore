@@ -53,3 +53,15 @@ dkms.conf
 
 # debug information files
 *.dwo
+
+# other stuff
+.tmp/**
+build/**
+.cache/**
+managed_components/**
+sdkconfig
+sdkconfig.old
+dependencies.lock
+.clangd
+.vscode/settings.json
+*.DS_Store
