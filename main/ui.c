@@ -49,9 +49,35 @@ static char s_pending_ota_state[24] = "idle";
 static int s_pending_ota_progress;
 static bool s_pending_ota_success;
 static bool s_pending_ota_dirty;
+static bool s_demo_sweep_enabled = true;
+static int s_demo_speed;
+static int s_demo_dir = 1;
 
 static void ui_refresh_pages(void *ctx);
 static void ui_show_menu(bool show);
+
+static void ui_apply_demo_sweep(int *speed, int *rpm, bool *gauge_dirty)
+{
+    if (!s_demo_sweep_enabled || !speed || !rpm || !gauge_dirty) {
+        return;
+    }
+
+    int speed_max = (CONFIG_HPE_UI_SPEED_MAX > 0) ? CONFIG_HPE_UI_SPEED_MAX : 120;
+    int rpm_max = (CONFIG_HPE_UI_RPM_MAX > 0) ? CONFIG_HPE_UI_RPM_MAX : 9000;
+
+    s_demo_speed += s_demo_dir;
+    if (s_demo_speed >= speed_max) {
+        s_demo_speed = speed_max;
+        s_demo_dir = -1;
+    } else if (s_demo_speed <= 0) {
+        s_demo_speed = 0;
+        s_demo_dir = 1;
+    }
+
+    *speed = s_demo_speed;
+    *rpm = (speed_max > 0) ? ((s_demo_speed * rpm_max) / speed_max) : 0;
+    *gauge_dirty = true;
+}
 
 static void ui_color_test_done_cb(void *ctx)
 {
@@ -279,6 +305,8 @@ static void ui_refresh_timer_cb(lv_timer_t *timer)
     s_pending_ota_dirty = false;
     portEXIT_CRITICAL(&s_ui_state_lock);
 
+    ui_apply_demo_sweep(&speed, &rpm, &gauge_dirty);
+
     if (gauge_dirty) {
         ui_screen_gauge_set_values(&s_gauge_screen, speed, rpm);
         ui_screen_gauge_classic_set_value(&s_classic_gauge_screen, speed);
@@ -385,7 +413,9 @@ esp_err_t ui_init(void)
     ui_screen_gauge_classic_set_value(&s_classic_gauge_screen, 24);
 
     portENTER_CRITICAL(&s_ui_state_lock);
-    s_pending_speed = 24;
+    s_demo_speed = 24;
+    s_demo_dir = 1;
+    s_pending_speed = s_demo_speed;
     s_pending_rpm = 1200;
     s_pending_gauge_dirty = false;
     strncpy(s_pending_ota_state, "idle", sizeof(s_pending_ota_state) - 1);
