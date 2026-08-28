@@ -1,6 +1,7 @@
 #include "ui_widget_dual_gauge.h"
 
 #include <stdio.h>
+#include "hpe_fonts.h"
 #include "src/draw/lv_draw_arc.h"
 #include "src/draw/lv_draw_line.h"
 #include "src/draw/lv_draw_label.h"
@@ -146,6 +147,16 @@ static void draw_filled_circle(lv_layer_t *layer, int cx, int cy, int r, lv_colo
     lv_draw_fill(layer, &dsc, &a);
 }
 
+static void draw_filled_rect(lv_layer_t *layer, const lv_area_t *a, lv_color_t color)
+{
+    lv_draw_fill_dsc_t dsc;
+    lv_draw_fill_dsc_init(&dsc);
+    dsc.color = color;
+    dsc.opa = LV_OPA_COVER;
+    dsc.radius = 0;
+    lv_draw_fill(layer, &dsc, a);
+}
+
 static void draw_speedometer_layer(lv_layer_t *layer, int cx, int cy, int size, int speed_max, int rpm_max, int speed, int rpm)
 {
     if (!layer) {
@@ -177,7 +188,7 @@ static void draw_speedometer_layer(lv_layer_t *layer, int cx, int cy, int size, 
         lv_point_t p = polar_to_xy(cx, cy, scale_px(77, size), a);
         char txt[16];
         snprintf(txt, sizeof(txt), "%d", v);
-        draw_text_center(layer, txt, p.x, p.y, &lv_font_montserrat_16, lv_color_hex(0xeef2f6));
+        draw_text_center(layer, txt, p.x, p.y, &lv_font_ddin_regular_16, lv_color_hex(0xeef2f6));
     }
 
     int rpm_segment_count = 16;
@@ -202,9 +213,9 @@ static void draw_speedometer_layer(lv_layer_t *layer, int cx, int cy, int size, 
     char rpm_txt[16];
     snprintf(speed_txt, sizeof(speed_txt), "%d", speed);
     snprintf(rpm_txt, sizeof(rpm_txt), "%d", rpm / 100);
-    draw_text_center(layer, speed_txt, cx - scale_px(58, size), cy + scale_px(66, size), &lv_font_montserrat_20, lv_color_hex(0xf5f7fa));
-    draw_text_center(layer, "km/h", cx - scale_px(58, size), cy + scale_px(90, size), &lv_font_montserrat_14, lv_color_hex(0xc6ccd4));
-    draw_text_center(layer, rpm_txt, cx + scale_px(21, size), cy + scale_px(15, size), &lv_font_montserrat_14, lv_color_hex(0x737b85));
+    draw_text_center(layer, speed_txt, cx - scale_px(58, size), cy + scale_px(66, size), &lv_font_ddin_bold_20, lv_color_hex(0xf5f7fa));
+    draw_text_center(layer, "km/h", cx - scale_px(58, size), cy + scale_px(90, size), &lv_font_ddin_regular_14, lv_color_hex(0xc6ccd4));
+    draw_text_center(layer, rpm_txt, cx + scale_px(21, size), cy + scale_px(15, size), &lv_font_ddin_regular_14, lv_color_hex(0x737b85));
 }
 
 static void gauge_draw_event_cb(lv_event_t *e)
@@ -238,6 +249,7 @@ static void gauge_draw_event_cb(lv_event_t *e)
     int cx = area.x1 + (w / 2);
     int cy = area.y1 + (h / 2);
 
+    draw_filled_rect(layer, &area, lv_color_hex(0x050608));
     draw_filled_circle(layer, cx, cy, size / 2, lv_color_hex(0x0a0b0d));
     draw_speedometer_layer(layer, cx, cy, size, state->speed_max, state->rpm_max, state->speed, state->rpm);
 }
@@ -270,7 +282,8 @@ lv_obj_t *ui_widget_dual_gauge_create(lv_obj_t *parent, int speed_max, int rpm_m
 
     lv_obj_set_size(obj, 232, 232);
     lv_obj_set_style_radius(obj, LV_RADIUS_CIRCLE, 0);
-    lv_obj_set_style_bg_opa(obj, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_bg_color(obj, lv_color_hex(0x050608), 0);
+    lv_obj_set_style_bg_opa(obj, LV_OPA_COVER, 0);
     lv_obj_set_style_border_width(obj, 0, 0);
     lv_obj_set_style_outline_width(obj, 0, 0);
     lv_obj_set_style_shadow_width(obj, 0, 0);

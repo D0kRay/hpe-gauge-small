@@ -7,21 +7,28 @@
 #include "display.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
+#include "hpe_fonts.h"
 #include "lvgl.h"
 #include "sdkconfig.h"
 #include "sensor_rtc.h"
 #include "ui_screen_can.h"
+#include "ui_screen_color_test.h"
 #include "ui_screen_gauge.h"
+#include "ui_screen_gauge_classic.h"
 #include "ui_screen_ota.h"
 #include "ui_screen_sensors.h"
 
 static ui_screen_gauge_t s_gauge_screen;
+static ui_screen_gauge_classic_t s_classic_gauge_screen;
+static ui_screen_color_test_t s_color_test_screen;
 static ui_screen_can_t s_can_screen;
 static ui_screen_sensors_t s_sensors_screen;
 static ui_screen_ota_t s_ota_screen;
 
 typedef enum {
     UI_SCREEN_GAUGE = 0,
+    UI_SCREEN_GAUGE_CLASSIC,
+    UI_SCREEN_COLOR_TEST,
     UI_SCREEN_CAN,
     UI_SCREEN_SENSORS,
     UI_SCREEN_OTA,
@@ -44,6 +51,13 @@ static bool s_pending_ota_success;
 static bool s_pending_ota_dirty;
 
 static void ui_refresh_pages(void *ctx);
+static void ui_show_menu(bool show);
+
+static void ui_color_test_done_cb(void *ctx)
+{
+    (void)ctx;
+    ui_show_menu(true);
+}
 
 static void ui_set_event_bubble_recursive(lv_obj_t *obj)
 {
@@ -122,7 +136,7 @@ static lv_obj_t *ui_create_screen_menu_item(lv_obj_t *parent, const char *title,
         return NULL;
     }
 
-    lv_obj_set_size(item, lv_pct(100), 34);
+    lv_obj_set_size(item, lv_pct(100), 30);
     lv_obj_set_style_radius(item, 10, 0);
     lv_obj_set_style_bg_color(item, lv_color_hex(0x13222c), 0);
     lv_obj_set_style_bg_opa(item, LV_OPA_COVER, 0);
@@ -135,7 +149,7 @@ static lv_obj_t *ui_create_screen_menu_item(lv_obj_t *parent, const char *title,
     lv_obj_t *label = lv_label_create(item);
     lv_label_set_text(label, title);
     lv_obj_set_style_text_color(label, lv_color_hex(0xe7f6ff), 0);
-    lv_obj_set_style_text_font(label, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_font(label, &lv_font_ddin_regular_14, 0);
     lv_obj_center(label);
 
     return item;
@@ -158,7 +172,7 @@ static esp_err_t ui_build_screen_menu(lv_obj_t *parent)
 
     s_menu_panel = lv_obj_create(s_menu_backdrop);
     ESP_RETURN_ON_FALSE(s_menu_panel != NULL, ESP_ERR_NO_MEM, TAG, "menu panel create failed");
-    lv_obj_set_size(s_menu_panel, 184, 176);
+    lv_obj_set_size(s_menu_panel, 184, 206);
     lv_obj_center(s_menu_panel);
     lv_obj_set_style_radius(s_menu_panel, 18, 0);
     lv_obj_set_style_bg_color(s_menu_panel, lv_color_hex(0x0b1319), 0);
@@ -174,10 +188,14 @@ static esp_err_t ui_build_screen_menu(lv_obj_t *parent)
     ESP_RETURN_ON_FALSE(title != NULL, ESP_ERR_NO_MEM, TAG, "menu title create failed");
     lv_label_set_text(title, "Open Screen");
     lv_obj_set_style_text_color(title, lv_color_hex(0x7fdcff), 0);
-    lv_obj_set_style_text_font(title, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_text_font(title, &lv_font_ddin_regular_16, 0);
     lv_obj_set_style_pad_bottom(title, 4, 0);
 
     ESP_RETURN_ON_FALSE(ui_create_screen_menu_item(s_menu_panel, "Gauge", UI_SCREEN_GAUGE) != NULL,
+                        ESP_ERR_NO_MEM, TAG, "menu item create failed");
+    ESP_RETURN_ON_FALSE(ui_create_screen_menu_item(s_menu_panel, "Gauge Classic", UI_SCREEN_GAUGE_CLASSIC) != NULL,
+                        ESP_ERR_NO_MEM, TAG, "menu item create failed");
+    ESP_RETURN_ON_FALSE(ui_create_screen_menu_item(s_menu_panel, "Color Test", UI_SCREEN_COLOR_TEST) != NULL,
                         ESP_ERR_NO_MEM, TAG, "menu item create failed");
     ESP_RETURN_ON_FALSE(ui_create_screen_menu_item(s_menu_panel, "CAN", UI_SCREEN_CAN) != NULL,
                         ESP_ERR_NO_MEM, TAG, "menu item create failed");
@@ -263,6 +281,7 @@ static void ui_refresh_timer_cb(lv_timer_t *timer)
 
     if (gauge_dirty) {
         ui_screen_gauge_set_values(&s_gauge_screen, speed, rpm);
+        ui_screen_gauge_classic_set_value(&s_classic_gauge_screen, speed);
     }
 
     if (ota_dirty) {
@@ -301,17 +320,33 @@ esp_err_t ui_init(void)
         ESP_RETURN_ON_FALSE(s_screen_roots[i] != NULL, ESP_ERR_NO_MEM, TAG, "screen root create failed");
         lv_obj_set_size(s_screen_roots[i], 240, 240);
         lv_obj_center(s_screen_roots[i]);
-        lv_obj_set_style_bg_opa(s_screen_roots[i], LV_OPA_TRANSP, 0);
+        lv_obj_set_style_bg_color(s_screen_roots[i], lv_color_hex(0x050608), 0);
+        lv_obj_set_style_bg_opa(s_screen_roots[i], LV_OPA_COVER, 0);
         lv_obj_set_style_border_width(s_screen_roots[i], 0, 0);
         lv_obj_set_style_outline_width(s_screen_roots[i], 0, 0);
         lv_obj_set_style_shadow_width(s_screen_roots[i], 0, 0);
         lv_obj_set_style_pad_all(s_screen_roots[i], 0, 0);
         lv_obj_set_scrollbar_mode(s_screen_roots[i], LV_SCROLLBAR_MODE_OFF);
-        lv_obj_add_flag(s_screen_roots[i], LV_OBJ_FLAG_CLICKABLE);
-        lv_obj_add_event_cb(s_screen_roots[i], ui_menu_open_cb, LV_EVENT_CLICKED, NULL);
+        if (i != UI_SCREEN_COLOR_TEST) {
+            lv_obj_add_flag(s_screen_roots[i], LV_OBJ_FLAG_CLICKABLE);
+            lv_obj_add_event_cb(s_screen_roots[i], ui_menu_open_cb, LV_EVENT_CLICKED, NULL);
+        }
     }
 
     ret = ui_screen_gauge_init(&s_gauge_screen, s_screen_roots[UI_SCREEN_GAUGE], CONFIG_HPE_UI_SPEED_MAX, CONFIG_HPE_UI_RPM_MAX);
+    if (ret != ESP_OK) {
+        goto err;
+    }
+
+    ret = ui_screen_gauge_classic_init(&s_classic_gauge_screen, s_screen_roots[UI_SCREEN_GAUGE_CLASSIC], CONFIG_HPE_UI_SPEED_MAX);
+    if (ret != ESP_OK) {
+        goto err;
+    }
+
+    ret = ui_screen_color_test_init(&s_color_test_screen,
+                                    s_screen_roots[UI_SCREEN_COLOR_TEST],
+                                    ui_color_test_done_cb,
+                                    NULL);
     if (ret != ESP_OK) {
         goto err;
     }
@@ -332,6 +367,8 @@ esp_err_t ui_init(void)
     }
 
     ui_set_event_bubble_recursive(s_screen_roots[UI_SCREEN_GAUGE]);
+    ui_set_event_bubble_recursive(s_screen_roots[UI_SCREEN_GAUGE_CLASSIC]);
+    ui_set_event_bubble_recursive(s_screen_roots[UI_SCREEN_COLOR_TEST]);
     ui_set_event_bubble_recursive(s_screen_roots[UI_SCREEN_CAN]);
     ui_set_event_bubble_recursive(s_screen_roots[UI_SCREEN_SENSORS]);
     ui_set_event_bubble_recursive(s_screen_roots[UI_SCREEN_OTA]);
@@ -345,6 +382,7 @@ esp_err_t ui_init(void)
 
     // Render a non-zero gauge state at boot so the UI is visibly alive.
     ui_screen_gauge_set_values(&s_gauge_screen, 24, 1200);
+    ui_screen_gauge_classic_set_value(&s_classic_gauge_screen, 24);
 
     portENTER_CRITICAL(&s_ui_state_lock);
     s_pending_speed = 24;

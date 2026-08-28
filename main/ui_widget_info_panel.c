@@ -1,4 +1,5 @@
 #include "ui_widget_info_panel.h"
+#include "hpe_fonts.h"
 
 static lv_obj_t *info_panel_title_obj(lv_obj_t *widget)
 {
@@ -19,7 +20,7 @@ lv_obj_t *ui_widget_info_panel_create(lv_obj_t *parent)
     lv_obj_set_style_pad_all(obj, 8, 0);
 
     lv_obj_t *title = lv_label_create(obj);
-    lv_obj_set_style_text_font(title, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_font(title, &lv_font_ddin_regular_14, 0);
     lv_label_set_text(title, "Info");
     lv_obj_align(title, LV_ALIGN_TOP_LEFT, 0, 0);
 

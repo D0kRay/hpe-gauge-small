@@ -219,6 +219,11 @@ config LV_FONT_FMT_TXT_LARGE
 config LV_USE_FONT_COMPRESSED
     default y
 
+config LV_DRAW_SW_SUPPORT_RGB565_SWAPPED
+    bool "Enable LVGL software renderer RGB565 swapped support"
+    default y
+    depends on LV_USE_DRAW_SW
+
 endmenu
 
 endmenu

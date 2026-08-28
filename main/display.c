@@ -29,16 +29,6 @@ static lv_color_t *s_buf2;
 static bool s_lvgl_task_started;
 static uint32_t s_touch_log_div;
 
-static inline void swap_rgb565_bytes(const lv_area_t *area, uint8_t *px_map)
-{
-    size_t px_count = (size_t)(area->x2 - area->x1 + 1) * (size_t)(area->y2 - area->y1 + 1);
-    uint16_t *pixels = (uint16_t *)px_map;
-    for (size_t i = 0; i < px_count; ++i) {
-        uint16_t v = pixels[i];
-        pixels[i] = (uint16_t)((v >> 8) | (v << 8));
-    }
-}
-
 static void lv_tick_cb(void *arg)
 {
     (void)arg;
@@ -64,7 +54,6 @@ static void lvgl_task(void *arg)
 
 static void flush_cb(lv_display_t *disp, const lv_area_t *area, uint8_t *px_map)
 {
-    swap_rgb565_bytes(area, px_map);
     esp_err_t ret = esp_lcd_panel_draw_bitmap(s_panel, area->x1, area->y1, area->x2 + 1, area->y2 + 1, px_map);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "flush draw failed: %s", esp_err_to_name(ret));
@@ -133,7 +122,7 @@ esp_err_t display_init(void)
     esp_lcd_panel_io_spi_config_t io_config = {
         .dc_gpio_num = bsp->pin_lcd_dc,
         .cs_gpio_num = bsp->pin_lcd_cs,
-        .pclk_hz = 40 * 1000 * 1000,
+        .pclk_hz = 20 * 1000 * 1000,
         .lcd_cmd_bits = 8,
         .lcd_param_bits = 8,
         .spi_mode = 0,
@@ -144,12 +133,12 @@ esp_err_t display_init(void)
     esp_lcd_panel_dev_config_t panel_config = {
         .reset_gpio_num = bsp->pin_lcd_rst,
         .bits_per_pixel = 16,
-        .rgb_ele_order = LCD_RGB_ELEMENT_ORDER_RGB,
+        .rgb_ele_order = LCD_RGB_ELEMENT_ORDER_BGR,
     };
     ESP_RETURN_ON_ERROR(esp_lcd_new_panel_gc9a01(io_handle, &panel_config, &s_panel), TAG, "new gc9a01 panel failed");
     ESP_RETURN_ON_ERROR(esp_lcd_panel_reset(s_panel), TAG, "panel reset failed");
     ESP_RETURN_ON_ERROR(esp_lcd_panel_init(s_panel), TAG, "panel init failed");
-    ESP_RETURN_ON_ERROR(esp_lcd_panel_invert_color(s_panel, false), TAG, "panel invert failed");
+    ESP_RETURN_ON_ERROR(esp_lcd_panel_invert_color(s_panel, true), TAG, "panel invert failed");
     ESP_RETURN_ON_ERROR(esp_lcd_panel_mirror(s_panel, true, false), TAG, "panel mirror failed");
     ESP_RETURN_ON_ERROR(esp_lcd_panel_disp_on_off(s_panel, true), TAG, "panel on failed");
 
@@ -166,6 +155,7 @@ esp_err_t display_init(void)
     ESP_RETURN_ON_FALSE(s_buf1 && s_buf2, ESP_ERR_NO_MEM, TAG, "lvgl buffers alloc failed");
 
     s_lv_disp = lv_display_create(240, 240);
+    lv_display_set_color_format(s_lv_disp, LV_COLOR_FORMAT_RGB565_SWAPPED);
     lv_display_set_buffers(s_lv_disp, s_buf1, s_buf2, 240 * 40 * sizeof(lv_color_t), LV_DISPLAY_RENDER_MODE_PARTIAL);
     lv_display_set_flush_cb(s_lv_disp, flush_cb);
 
