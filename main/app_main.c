@@ -29,14 +29,19 @@ void app_main(void)
     }
     ESP_ERROR_CHECK(can_cfg_init());
 
-    esp_console_config_t console_cfg = {
-        .max_cmdline_length = 256,
-        .max_cmdline_args = 16,
-    };
-    ESP_ERROR_CHECK(esp_console_init(&console_cfg));
     linenoiseSetMultiLine(true);
     linenoiseHistorySetMaxLen(20);
     ESP_ERROR_CHECK(can_console_register());
+    ESP_ERROR_CHECK(esp_console_register_help_command());
+
+    esp_console_repl_t *repl = NULL;
+    esp_console_repl_config_t repl_cfg = ESP_CONSOLE_REPL_CONFIG_DEFAULT();
+    repl_cfg.max_history_len = 20;
+    repl_cfg.prompt = "esp> ";
+
+    esp_console_dev_usb_serial_jtag_config_t dev_cfg = ESP_CONSOLE_DEV_USB_SERIAL_JTAG_CONFIG_DEFAULT();
+    ESP_ERROR_CHECK(esp_console_new_repl_usb_serial_jtag(&dev_cfg, &repl_cfg, &repl));
+    ESP_ERROR_CHECK(esp_console_start_repl(repl));
 
     ESP_ERROR_CHECK(display_init());
     ESP_ERROR_CHECK(ui_init());
@@ -45,7 +50,10 @@ void app_main(void)
     if (ret != ESP_OK) {
         ESP_LOGW(TAG, "TWAI init failed, continuing without CAN RX: %s", esp_err_to_name(ret));
     }
-    ESP_ERROR_CHECK(web_ui_start());
+    ret = web_ui_start();
+    if (ret != ESP_OK) {
+        ESP_LOGW(TAG, "web UI start failed, continuing without web dashboard: %s", esp_err_to_name(ret));
+    }
 
     ESP_LOGI(TAG, "System started. Use 'cancfg show' / 'cancfg set <name> <id> <start_bit> <bit_len> <le|be> <signed> <factor> <offset>' / 'cancfg save'.");
 }

@@ -36,6 +36,7 @@ idf_component_register(
         esp_lcd_gc9a01
         esp_lcd_touch
         esp_lcd_touch_cst816s
+        raycaster_game
         nvs_flash
         console
         app_update

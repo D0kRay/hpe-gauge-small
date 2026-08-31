@@ -26,3 +26,18 @@ void ui_set_speed_rpm(float speed_kmh, float rpm);
  * @param success True once update is validated and ready for reboot.
  */
 void ui_set_ota_status(const char *state_text, int progress_percent, bool success);
+
+/**
+ * @brief Switch the active UI screen by name.
+ *
+ * Supported names: gauge, classic, color, can, sensors, ota, raycaster.
+ */
+esp_err_t ui_switch_screen_name(const char *screen_name);
+
+/**
+ * @brief Dump a compact ASCII preview of the current raycaster framebuffer.
+ *
+ * @param use_render_buffer If true, dump the working render buffer; otherwise dump
+ * the canvas buffer currently displayed to LVGL.
+ */
+void ui_debug_dump_raycaster_frame(bool use_render_buffer);

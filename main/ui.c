@@ -3,12 +3,15 @@
 #include <stdio.h>
 #include <string.h>
 #include "esp_check.h"
+#include "esp_heap_caps.h"
 #include "can_cfg.h"
 #include "display.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "hpe_fonts.h"
 #include "lvgl.h"
+#include "widgets/canvas/lv_canvas.h"
+#include "raycaster_game.h"
 #include "sdkconfig.h"
 #include "sensor_rtc.h"
 #include "ui_screen_can.h"
@@ -25,6 +28,12 @@ static ui_screen_can_t s_can_screen;
 static ui_screen_sensors_t s_sensors_screen;
 static ui_screen_ota_t s_ota_screen;
 
+static lv_obj_t *s_raycaster_canvas;
+static uint16_t *s_raycaster_frame = NULL;
+static uint16_t *s_raycaster_render_frame = NULL;
+static bool s_raycaster_started;
+static TaskHandle_t s_raycaster_task_handle = NULL;
+
 typedef enum {
     UI_SCREEN_GAUGE = 0,
     UI_SCREEN_GAUGE_CLASSIC,
@@ -32,6 +41,7 @@ typedef enum {
     UI_SCREEN_CAN,
     UI_SCREEN_SENSORS,
     UI_SCREEN_OTA,
+    UI_SCREEN_RAYCASTER,
     UI_SCREEN_COUNT,
 } ui_screen_id_t;
 
@@ -40,6 +50,8 @@ static lv_obj_t *s_screen_roots[UI_SCREEN_COUNT];
 static lv_obj_t *s_menu_backdrop;
 static lv_obj_t *s_menu_panel;
 static ui_screen_id_t s_active_screen = UI_SCREEN_GAUGE;
+static ui_screen_id_t s_pending_screen_switch = UI_SCREEN_GAUGE;
+static bool s_pending_screen_switch_valid = false;
 static const char *TAG = "ui";
 static portMUX_TYPE s_ui_state_lock = portMUX_INITIALIZER_UNLOCKED;
 static int s_pending_speed;
@@ -52,9 +64,138 @@ static bool s_pending_ota_dirty;
 static bool s_demo_sweep_enabled = true;
 static int s_demo_speed;
 static int s_demo_dir = 1;
+static uint32_t s_last_raycaster_update_ms = 0;
 
 static void ui_refresh_pages(void *ctx);
 static void ui_show_menu(bool show);
+static void ui_switch_screen(ui_screen_id_t screen_id);
+static void ui_raycaster_worker_task(void *arg);
+static void ui_request_screen_switch(ui_screen_id_t screen_id)
+{
+    if (screen_id >= UI_SCREEN_COUNT) {
+        return;
+    }
+
+    portENTER_CRITICAL(&s_ui_state_lock);
+    s_pending_screen_switch = screen_id;
+    s_pending_screen_switch_valid = true;
+    portEXIT_CRITICAL(&s_ui_state_lock);
+}
+
+static void ui_raycaster_start_if_needed(void)
+{
+    if (!s_raycaster_started) {
+        raycaster_game_init();
+        s_raycaster_started = true;
+    }
+}
+
+static void ui_raycaster_update(void)
+{
+    if (!s_raycaster_canvas || !s_raycaster_frame || !s_raycaster_render_frame) {
+        return;
+    }
+
+    raycaster_input_t input = {0};
+    display_touch_state_t touch = {0};
+    if (display_get_touch_state(&touch) == ESP_OK && touch.pressed) {
+        input.touched = true;
+        input.turn_delta_x = touch.dx;
+
+        const int center_x = 120;
+        const int center_y = 80;
+        const int x_dead = 30;
+        const int y_dead = 26;
+
+        if (touch.x < center_x - x_dead) {
+            input.turn_left = true;
+        } else if (touch.x > center_x + x_dead) {
+            input.turn_right = true;
+        }
+
+        if (touch.y < center_y - y_dead) {
+            input.forward = true;
+        } else if (touch.y > center_y + y_dead) {
+            input.backward = true;
+        }
+
+        if (abs(touch.x - center_x) <= x_dead && abs(touch.y - center_y) <= y_dead) {
+            input.fire = true;
+        }
+    }
+
+    ui_raycaster_start_if_needed();
+    raycaster_game_step(&input, s_raycaster_render_frame, 240 * 160 * sizeof(uint16_t));
+
+    /* lv_async_call()/LVGL object APIs are not thread-safe against the LVGL
+     * task's lv_timer_handler() running on the other core, so the canvas
+     * buffer swap and invalidate must happen under the LVGL mutex here. */
+    display_lvgl_lock();
+    memcpy(s_raycaster_frame, s_raycaster_render_frame, 240 * 160 * sizeof(uint16_t));
+    lv_obj_move_foreground(s_raycaster_canvas);
+    lv_obj_invalidate(s_raycaster_canvas);
+    display_lvgl_unlock();
+}
+
+static void ui_raycaster_worker_task(void *arg)
+{
+    (void)arg;
+    while (true) {
+        if (s_active_screen == UI_SCREEN_RAYCASTER) {
+            ui_raycaster_update();
+        }
+        vTaskDelay(pdMS_TO_TICKS(50));
+    }
+}
+
+void ui_debug_dump_raycaster_frame(bool use_render_buffer)
+{
+    const uint16_t *frame = use_render_buffer ? s_raycaster_render_frame : s_raycaster_frame;
+    if (frame == NULL) {
+        printf("raybuf: no framebuffer allocated yet (%s buffer)\n",
+               use_render_buffer ? "render" : "canvas");
+        return;
+    }
+
+    printf("raybuf: %s framebuffer preview (240x160 RGB565, sampled 16x10)\n",
+           use_render_buffer ? "render" : "canvas");
+
+    for (int y = 0; y < 10; ++y) {
+        char row[64] = {0};
+        char *p = row;
+
+        for (int x = 0; x < 16; ++x) {
+            int sx = x * (240 / 16);
+            int sy = y * (160 / 10);
+            int idx = sy * 240 + sx;
+            uint16_t color = frame[idx];
+
+            uint16_t r = (color >> 11) & 0x1F;
+            uint16_t g = (color >> 5) & 0x3F;
+            uint16_t b = color & 0x1F;
+            int brightness = (r * 255 / 31) + (g * 255 / 63) + (b * 255 / 31);
+            brightness /= 3;
+
+            const char *glyph = ".";
+            if (brightness > 220) glyph = "@";
+            else if (brightness > 170) glyph = "#";
+            else if (brightness > 120) glyph = "+";
+            else if (brightness > 70) glyph = ":";
+            else if (brightness > 30) glyph = ".";
+
+            p += snprintf(p, sizeof(row) - (size_t)(p - row), "%s", glyph);
+        }
+
+        printf("%s\n", row);
+    }
+
+    printf("raybuf: border check -> left=%04x mid=%04x right=%04x center=%04x right-half=%04x\n",
+           frame[80 * 240 + 0],
+           frame[80 * 240 + 120],
+           frame[80 * 240 + 239],
+           frame[80 * 240 + 120],
+           frame[80 * 240 + 180]);
+}
 
 static void ui_apply_demo_sweep(int *speed, int *rpm, bool *gauge_dirty)
 {
@@ -98,6 +239,35 @@ static void ui_set_event_bubble_recursive(lv_obj_t *obj)
     }
 }
 
+esp_err_t ui_switch_screen_name(const char *screen_name)
+{
+    static const struct {
+        const char *name;
+        ui_screen_id_t screen_id;
+    } screen_map[] = {
+        {"gauge", UI_SCREEN_GAUGE},
+        {"classic", UI_SCREEN_GAUGE_CLASSIC},
+        {"color", UI_SCREEN_COLOR_TEST},
+        {"can", UI_SCREEN_CAN},
+        {"sensors", UI_SCREEN_SENSORS},
+        {"ota", UI_SCREEN_OTA},
+        {"raycaster", UI_SCREEN_RAYCASTER},
+    };
+
+    if (!screen_name) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    for (size_t i = 0; i < sizeof(screen_map) / sizeof(screen_map[0]); ++i) {
+        if (strcmp(screen_name, screen_map[i].name) == 0) {
+            ui_request_screen_switch(screen_map[i].screen_id);
+            return ESP_OK;
+        }
+    }
+
+    return ESP_ERR_NOT_FOUND;
+}
+
 static void ui_show_menu(bool show)
 {
     if (!s_menu_backdrop) {
@@ -130,6 +300,17 @@ static void ui_switch_screen(ui_screen_id_t screen_id)
         }
     }
 
+    if (screen_id == UI_SCREEN_RAYCASTER) {
+        ui_raycaster_start_if_needed();
+        s_last_raycaster_update_ms = 0U;
+        if (s_raycaster_canvas) {
+            lv_obj_move_foreground(s_raycaster_canvas);
+            lv_obj_invalidate(s_raycaster_canvas);
+        }
+    } else {
+        s_last_raycaster_update_ms = 0U;
+    }
+
     s_active_screen = screen_id;
     ui_show_menu(false);
 }
@@ -137,6 +318,10 @@ static void ui_switch_screen(ui_screen_id_t screen_id)
 static void ui_menu_open_cb(lv_event_t *e)
 {
     (void)e;
+    if (s_active_screen == UI_SCREEN_RAYCASTER) {
+        return;
+    }
+
     ESP_LOGI(TAG, "screen tap detected, opening menu");
     ui_show_menu(true);
 }
@@ -162,6 +347,7 @@ static lv_obj_t *ui_create_screen_menu_item(lv_obj_t *parent, const char *title,
         return NULL;
     }
 
+    lv_obj_clear_flag(item, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_set_size(item, lv_pct(100), 30);
     lv_obj_set_style_radius(item, 10, 0);
     lv_obj_set_style_bg_color(item, lv_color_hex(0x13222c), 0);
@@ -228,6 +414,8 @@ static esp_err_t ui_build_screen_menu(lv_obj_t *parent)
     ESP_RETURN_ON_FALSE(ui_create_screen_menu_item(s_menu_panel, "Sensors", UI_SCREEN_SENSORS) != NULL,
                         ESP_ERR_NO_MEM, TAG, "menu item create failed");
     ESP_RETURN_ON_FALSE(ui_create_screen_menu_item(s_menu_panel, "OTA", UI_SCREEN_OTA) != NULL,
+                        ESP_ERR_NO_MEM, TAG, "menu item create failed");
+    ESP_RETURN_ON_FALSE(ui_create_screen_menu_item(s_menu_panel, "Raycaster", UI_SCREEN_RAYCASTER) != NULL,
                         ESP_ERR_NO_MEM, TAG, "menu item create failed");
 
     return ESP_OK;
@@ -316,6 +504,15 @@ static void ui_refresh_timer_cb(lv_timer_t *timer)
         ui_screen_ota_set_status(&s_ota_screen, ota_state, ota_progress, ota_success);
     }
 
+    if (s_pending_screen_switch_valid) {
+        ui_screen_id_t requested_screen = UI_SCREEN_GAUGE;
+        portENTER_CRITICAL(&s_ui_state_lock);
+        requested_screen = s_pending_screen_switch;
+        s_pending_screen_switch_valid = false;
+        portEXIT_CRITICAL(&s_ui_state_lock);
+        ui_switch_screen(requested_screen);
+    }
+
     if (++summary_div >= 10) {
         summary_div = 0;
         ui_refresh_pages(NULL);
@@ -355,7 +552,7 @@ esp_err_t ui_init(void)
         lv_obj_set_style_shadow_width(s_screen_roots[i], 0, 0);
         lv_obj_set_style_pad_all(s_screen_roots[i], 0, 0);
         lv_obj_set_scrollbar_mode(s_screen_roots[i], LV_SCROLLBAR_MODE_OFF);
-        if (i != UI_SCREEN_COLOR_TEST) {
+        if (i != UI_SCREEN_COLOR_TEST && i != UI_SCREEN_RAYCASTER) {
             lv_obj_add_flag(s_screen_roots[i], LV_OBJ_FLAG_CLICKABLE);
             lv_obj_add_event_cb(s_screen_roots[i], ui_menu_open_cb, LV_EVENT_CLICKED, NULL);
         }
@@ -394,12 +591,47 @@ esp_err_t ui_init(void)
         goto err;
     }
 
+    s_raycaster_frame = heap_caps_malloc(240 * 160 * sizeof(uint16_t), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    s_raycaster_render_frame = heap_caps_malloc(240 * 160 * sizeof(uint16_t), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    if (!s_raycaster_frame || !s_raycaster_render_frame) {
+        ret = ESP_ERR_NO_MEM;
+        goto err;
+    }
+
+    s_raycaster_canvas = lv_canvas_create(s_screen_roots[UI_SCREEN_RAYCASTER]);
+    if (s_raycaster_canvas == NULL) {
+        ret = ESP_ERR_NO_MEM;
+        goto err;
+    }
+    lv_obj_set_size(s_raycaster_canvas, 240, 160);
+    lv_obj_align(s_raycaster_canvas, LV_ALIGN_CENTER, 0, 0);
+    lv_canvas_set_buffer(s_raycaster_canvas, s_raycaster_frame, 240, 160, LV_COLOR_FORMAT_RGB565);
+    lv_obj_t *ray_title = lv_label_create(s_screen_roots[UI_SCREEN_RAYCASTER]);
+    if (ray_title == NULL) {
+        ret = ESP_ERR_NO_MEM;
+        goto err;
+    }
+    lv_label_set_text(ray_title, "Raycaster");
+    lv_obj_set_style_text_font(ray_title, &lv_font_ddin_regular_16, 0);
+    lv_obj_set_style_text_color(ray_title, lv_color_hex(0x7fdcff), 0);
+    lv_obj_align(ray_title, LV_ALIGN_TOP_MID, 0, 4);
+    lv_obj_t *ray_hint = lv_label_create(s_screen_roots[UI_SCREEN_RAYCASTER]);
+    if (ray_hint == NULL) {
+        ret = ESP_ERR_NO_MEM;
+        goto err;
+    }
+    lv_label_set_text(ray_hint, "Touch: drag to turn, right side to fire");
+    lv_obj_set_style_text_font(ray_hint, &lv_font_ddin_regular_14, 0);
+    lv_obj_set_style_text_color(ray_hint, lv_color_hex(0xd8ebff), 0);
+    lv_obj_align(ray_hint, LV_ALIGN_BOTTOM_MID, 0, -4);
+
     ui_set_event_bubble_recursive(s_screen_roots[UI_SCREEN_GAUGE]);
     ui_set_event_bubble_recursive(s_screen_roots[UI_SCREEN_GAUGE_CLASSIC]);
     ui_set_event_bubble_recursive(s_screen_roots[UI_SCREEN_COLOR_TEST]);
     ui_set_event_bubble_recursive(s_screen_roots[UI_SCREEN_CAN]);
     ui_set_event_bubble_recursive(s_screen_roots[UI_SCREEN_SENSORS]);
     ui_set_event_bubble_recursive(s_screen_roots[UI_SCREEN_OTA]);
+    ui_set_event_bubble_recursive(s_screen_roots[UI_SCREEN_RAYCASTER]);
 
     ret = ui_build_screen_menu(s_round_root);
     if (ret != ESP_OK) {
@@ -428,6 +660,9 @@ esp_err_t ui_init(void)
     ui_refresh_pages(NULL);
     ui_screen_ota_set_status(&s_ota_screen, "idle", 0, false);
     lv_timer_create(ui_refresh_timer_cb, 33, NULL);
+    if (xTaskCreatePinnedToCore(ui_raycaster_worker_task, "raycaster_worker", 8192, NULL, 3, &s_raycaster_task_handle, 0) != pdPASS) {
+        ESP_LOGW(TAG, "raycaster worker task create failed, continuing with timer-based refresh");
+    }
     ESP_LOGI(TAG, "round UI ready");
     return ESP_OK;
 

@@ -28,6 +28,9 @@ static lv_color_t *s_buf1;
 static lv_color_t *s_buf2;
 static bool s_lvgl_task_started;
 static uint32_t s_touch_log_div;
+static int s_last_touch_x = -1;
+static int s_last_touch_y = -1;
+static bool s_last_touch_active = false;
 
 static void lv_tick_cb(void *arg)
 {
@@ -98,6 +101,65 @@ void display_lvgl_lock(void)
 void display_lvgl_unlock(void)
 {
     xSemaphoreGive(s_lvgl_mutex);
+}
+
+esp_err_t display_get_touch_state(display_touch_state_t *touch)
+{
+    if (!touch) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    memset(touch, 0, sizeof(*touch));
+    if (!s_touch) {
+        s_last_touch_active = false;
+        s_last_touch_x = -1;
+        s_last_touch_y = -1;
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    /* Serialize against touch_read_cb(), which is invoked from lv_timer_handler()
+     * under the same lock; the touch driver/I2C bus is not safe to access from
+     * two tasks (potentially on different cores) concurrently. */
+    display_lvgl_lock();
+
+    esp_err_t ret = esp_lcd_touch_read_data(s_touch);
+    if (ret != ESP_OK) {
+        display_lvgl_unlock();
+        return ret;
+    }
+
+    esp_lcd_touch_point_data_t points[1] = {0};
+    uint8_t point_count = 0;
+    ret = esp_lcd_touch_get_data(s_touch, points, &point_count, 1);
+    if (ret != ESP_OK) {
+        display_lvgl_unlock();
+        return ret;
+    }
+
+    if (point_count == 0U) {
+        s_last_touch_active = false;
+        s_last_touch_x = -1;
+        s_last_touch_y = -1;
+        display_lvgl_unlock();
+        return ESP_OK;
+    }
+
+    int current_x = (int)points[0].x;
+    int current_y = (int)points[0].y;
+    touch->pressed = true;
+    touch->x = (int16_t)current_x;
+    touch->y = (int16_t)current_y;
+
+    if (s_last_touch_active) {
+        touch->dx = (int16_t)(current_x - s_last_touch_x);
+        touch->dy = (int16_t)(current_y - s_last_touch_y);
+    }
+
+    s_last_touch_x = current_x;
+    s_last_touch_y = current_y;
+    s_last_touch_active = true;
+    display_lvgl_unlock();
+    return ESP_OK;
 }
 
 esp_err_t display_init(void)

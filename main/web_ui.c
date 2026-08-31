@@ -8,6 +8,7 @@
 #include "can_service.h"
 #include "esp_check.h"
 #include "esp_event.h"
+#include "esp_heap_caps.h"
 #include "esp_http_server.h"
 #include "esp_log.h"
 #include "esp_netif.h"
@@ -746,7 +747,8 @@ static esp_err_t web_server_start(void)
 {
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
     config.max_open_sockets = CONFIG_HPE_WIFI_MAX_CONN + 2;
-    config.stack_size = 10240;
+    config.stack_size = 12288;
+    config.task_caps = MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT;
 
     ESP_RETURN_ON_ERROR(httpd_start(&s_httpd, &config), TAG, "httpd start failed");
 
@@ -794,7 +796,10 @@ esp_err_t web_ui_start(void)
     ota_state_set("idle", 0, false, false);
     ESP_RETURN_ON_ERROR(wifi_ap_start(), TAG, "wifi AP start failed");
     ESP_RETURN_ON_ERROR(web_server_start(), TAG, "web server start failed");
-    ESP_RETURN_ON_FALSE(xTaskCreatePinnedToCore(ws_broadcast_task, "ws_broadcast", 8192, NULL, 4, NULL, 0) == pdPASS,
-                        ESP_ERR_NO_MEM, TAG, "ws task create failed");
+
+    if (xTaskCreatePinnedToCore(ws_broadcast_task, "ws_broadcast", 8192, NULL, 4, NULL, 0) != pdPASS) {
+        ESP_LOGW(TAG, "ws task create failed; continuing without websocket updates");
+    }
+
     return ESP_OK;
 }
